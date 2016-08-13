@@ -1,0 +1,50 @@
+<config>
+  <!-- This configuration file is used to customize the font substitution. -->
+  <fonts>
+
+  <!-- An explicit font map could be used to map specific font names 
+       to font files. For example:  -->
+
+  <subst name="HGGothicE"         file="C:\Windows\Fonts\HGRGE.TTC"/>
+  <subst name="HGPGothicE"        file="C:\Windows\Fonts\HGRGE.TTC"/>
+  <subst name="HGSGothicE"        file="C:\Windows\Fonts\HGRGE.TTC"/>
+  <subst name="HGGothicM"         file="C:\Windows\Fonts\HGRGM.TTC"/>
+  <subst name="HGPGothicM"        file="C:\Windows\Fonts\HGRGM.TTC"/>
+  <subst name="HGSGothicM"        file="C:\Windows\Fonts\HGRGM.TTC"/>
+  <subst name="HGMaruGothicMPRO"  file="C:\Windows\Fonts\HGRSMP.TTF"/>
+  <subst name="HGKyokashotai"     file="C:\Windows\Fonts\HGRKK.TTC"/>
+  <subst name="HGPKyokashotai"    file="C:\Windows\Fonts\HGRKK.TTC"/>
+  <subst name="HGSKyokashotai"    file="C:\Windows\Fonts\HGRKK.TTC"/>
+  <subst name="HGGyoshotai"       file="C:\Windows\Fonts\HGRGY.TTC"/>
+  <subst name="HGPGyoshotai"      file="C:\Windows\Fonts\HGRGY.TTC"/>
+  <subst name="HGSGyoshotai"      file="C:\Windows\Fonts\HGRGY.TTC"/>
+  <subst name="HGSeikaishotaiPRO" file="C:\Windows\Fonts\HGRSKP.TTF"/>
+  <subst name="HGSoeiPresenceEB"  file="C:\Windows\Fonts\HGRPRE.TTC"/>
+  <subst name="HGPSoeiPresenceEB" file="C:\Windows\Fonts\HGRPRE.TTC"/>
+  <subst name="HGSSoeiPresenceEB" file="C:\Windows\Fonts\HGRPRE.TTC"/>
+  <subst name="HGSoeiKakugothicUB" file="C:\Windows\Fonts\HGRSGU.TTC"/>
+  <subst name="HGPSoeiKakugothicUB" file="C:\Windows\Fonts\HGRSGU.TTC"/>
+  <subst name="HGSSoeiKakugothicUB" file="C:\Windows\Fonts\HGRSGU.TTC"/>
+  <subst name="HGSoeiKakupoptai"  file="C:\Windows\Fonts\HGRPP1.TTC"/>
+  <subst name="HGPSoeiKakupoptai" file="C:\Windows\Fonts\HGRPP1.TTC"/>
+  <subst name="HGSSoeiKakupoptai" file="C:\Windows\Fonts\HGRPP1.TTC"/>
+  <subst name="HGMinchoB"         file="C:\Windows\Fonts\HGRMB.TTC"/>
+  <subst name="HGPMinchoB"        file="C:\Windows\Fonts\HGRMB.TTC"/>
+  <subst name="HGSMinchoB"        file="C:\Windows\Fonts\HGRMB.TTC"/>
+  <subst name="HGMinchoE"         file="C:\Windows\Fonts\HGRME.TTC"/>
+  <subst name="HGPMinchoE"        file="C:\Windows\Fonts\HGRME.TTC"/>
+  <subst name="HGSMinchoE"        file="C:\Windows\Fonts\HGRME.TTC"/>
+  <subst name="MSGothic"         file="C:\Windows\Fonts\msgothic.ttc"/>
+  <subst name="MSPGothic"        file="C:\Windows\Fonts\msgothic.ttc"/>
+  <subst name="MSUIGothic"        file="C:\Windows\Fonts\msgothic.ttc"/>
+  <subst name="MSMincho"         file="C:\Windows\Fonts\msmincho.ttc"/>
+  <subst name="MSPMincho"        file="C:\Windows\Fonts\msmincho.ttc"/>
+  <subst name="Meiryo"            file="C:\Windows\Fonts\meiryo.ttc"/>
+  <subst name="MeiryoItalic"     file="C:\Windows\Fonts\meiryo.ttc"/>
+  <subst name="MeiryoBold"       file="C:\Windows\Fonts\meiryob.ttc"/>
+  <subst name="MeiryoBoldItalic" file="C:\Windows\Fonts\meiryob.ttc"/>
+
+    <!--subst collection="Japan1" file="C:\Program Files (x86)\Adobe\Reader 9.0\Resource\CIDFont\KozGoPr6N-Medium.otff"/> 
+  <subst collection="Japan2" file="C:\Program Files (x86)\Adobe\Reader 9.0\Resource\CIDFont\KozGoPr6N-Medium.otf"/ --> 
+</fonts>
+</config>

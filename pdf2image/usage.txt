@@ -1,0 +1,183 @@
+
+PDFTron PDF2Image V6.6042202.
+Copyright (c) 2002-2014 PDFTron Systems Inc., www.pdftron.com.
+
+You are running a DEMO version of PDF2Image.
+In the demo version, all processed pages will be stamped with a demo stamp.
+
+Usage: pdf2image [<options>] file...
+
+OPTIONS:
+
+  --file... arg              A list of folders and/or file names to process.
+                             
+  -o [ --output ] arg        The output folder used to store rasterized files. 
+                             By default, the currently selected working folder 
+                             will be used to store converted image files.
+                             
+  --prefix arg               The prefix for the output image file. The output 
+                             filename will be constructed by appending the 
+                             prefix string, the page number, and the 
+                             appropriate image extension (e.g. myprefix1.png, 
+                             myprefix2.png, etc). The prefix option should be 
+                             used only for conversion of individual documents. 
+                             By default, each input filename will be used as a 
+                             prefix.
+                             
+  --digits arg               The number of digits used in the page counter 
+                             portion of the output filename. By default, new 
+                             digits are added as needed; however this parameter
+                             could be used to format the page counter field to 
+                             a uniform width (e.g. myfile0001.jpg, 
+                             myfile0002.jpg, etc).
+                             
+  --subfolders               Process all sub-directory for every directory 
+                             specified in the argument list. By default, 
+                             sub-directories are not processed.
+                             
+  -f [ --format ] arg (=png) Output image format. The following is a list of 
+                             supported export formats:
+                               png
+                               png8 (palettized png)
+                               jpg (or jpeg)
+                               tif (or tiff)
+                               tif8 (palettized tiff)
+                               bmp
+                               raw
+                             The default output image format is PNG.
+                             
+  -d [ --dpi ] arg (=92)     The output resolution, from 1 to 1000, in Dots Per
+                             Inch (DPI). The higher the DPI, the larger the 
+                             image. Resolutions larger than 1000 DPI can be 
+                             achieved by rendering image in tiles or stripes. 
+                             The default resolution is 92 DPI.
+                             
+  --nocms                    Disable color management system. By default, 
+                             PDF2Image uses lcms
+                             
+  --icc_rgb arg              Specifies RGB ICC profile.
+                             
+  --icc_cmyk arg             Specifies CMYK ICC profile.
+                             
+  --hres arg                 The width of the output image, in pixels.
+                             
+  --vres arg                 The height of the output image, in pixels.
+                             
+  -a [ --pages ] arg (=-)    Specifies the list of pages to convert. By 
+                             default, all pages are converted.
+                             
+  -b [ --box ] arg (=crop)   Specifies the page box/region to rasterize. 
+                             Possible values are:
+                               media
+                               crop
+                               trim
+                               bleed
+                               art
+                             By default, page crop region will be rasterized.
+                             
+  -c [ --clip ] arg          User definable clip box. By default, the clip 
+                             region is identical to current page 'box'.
+                             
+  -r [ --rotate ] arg (=0)   Rotates all pages by a given number of degrees 
+                             counterclockwise. The allowed values are 0, 90, 
+                             180, and 270. The default value is 0.
+                             
+  -g [ --gray ]              Render and export the image in grayscale mode. 
+                             Sets pixel format to 8 bits per pixel grayscale. 
+                             By default, the image is rendered and exported in 
+                             RGB color space.
+                             
+  --mono                     Export the rendered image as 1 bit per pixel 
+                             (monochrome) image. If the output format is TIFF, 
+                             the image will be compressed using G4 CCITT 
+                             compression algorithm. By default, the image is 
+                             not dithered. To enable dithering use '--dither' 
+                             option.
+                             
+  -k [ --cmyk ]              Render and export the image in CMYK mode. To 
+                             export CMYK, the output image format must support 
+                             CMYK pixel format. An example of image format that
+                             supports CMYK is TIFF (e.g. -f tif -k). By 
+                             default, the image is rendered and exported in RGB
+                             color space.
+                             
+  --config arg               Load xml file to configure font substitution for 
+                             missing fonts. By default, tries to load the file 
+                             "config.xml" in the current working directory.
+                             
+  --dither                   Enables dithering when the image is exported in 
+                             palletized or monochrome mode (e.g. when export 
+                             format is tif8, png8 or --mono).
+                             
+  --gamma arg (=0)           Sets the gamma factor used for anti-aliased 
+                             rendering. Typical values are in the range from 
+                             0.1 to 3. Gamma correction can be used to improve 
+                             the quality of anti-aliased image output and can 
+                             (to some extent) decrease the appearance common 
+                             anti-aliasing artifacts (such as pixel width lines
+                             between polygons).
+                             
+  -q [ --quality ] arg (=80) Compression quality is a number in the range from 
+                             1 to 100. Lower numbers usually result in better 
+                             compression at the expense of image quality. The 
+                             default setting is 80.
+                             
+  -m [ --multipage ]         If the output image format supports multi-page or 
+                             multi-frame capability, store all output images in
+                             one file instead of separate files. Currently, 
+                             this option is only relevant to TIFF output. By 
+                             default, images will be saved in separate files.
+                             
+  --printmode                Renders annotations in the print mode. This option
+                             can be used to render 'Print Only' annotations and
+                             to hide 'Screen Only' annotations.
+                             
+  --transparent_page         Sets the page color to transparent. By default, 
+                             PDF2Image assumes that the page is drawn directly 
+                             on an opaque white surface. Some applications may 
+                             need to draw the page on a different backdrop. In 
+                             this case any pixels that are not covered during 
+                             rendering will be transparent.
+                             
+  --op arg (=pdfx)           Specifies if overprint simulation is used. 
+                             Overprint is a device dependent feature and the 
+                             results will vary depending on the output color 
+                             space and supported colorants (i.e. CMYK, 
+                             CMYK+spot, RGB, etc). Possible values are:
+                               off, overprint is turned off
+                               on, overprint is turned on
+                               pdfx, overprint is turned on only for PDF/X 
+                              files
+                             By default, pdfx is used.
+                             
+  --noannots                 Disables drawing of annotations.
+                             
+  --nosmooth                 Disables image smoothing.
+                             
+  --noprompt                 Disables any user input. By default, the 
+                             application will ask for a valid password if the 
+                             password is incorrect.
+                             
+  -p [ --pass ] arg          The password for secured PDF files. Not required 
+                             if the input document is not secured using the 
+                             'open' password.
+                             
+  --extension arg (=.pdf)    The default file extension used to process PDF 
+                             documents. The default extension is ".pdf".
+                             
+  --verb arg (=1)            Set the opt.m_verbosity level to 'arg' (0-2).
+                             
+  -v [ --version ]           Print the version information.
+                             
+  -h [ --help ]              Print a listing of available options.
+                             
+
+
+Examples:
+  pdf2image -o test_out/ex1 test/tiger.pdf
+  pdf2image -o test_out/ex2 --hres 100 --vres 100 --rotate 90 test/tiger.pdf
+  pdf2image -o test_out/ex3 -f tif --multipage --gray -p secret --rotate 270 --verb 3 test/blue_secret.pdf
+  pdf2image -o test_out/ex4 --dpi 3000 -f jpg -c 216,522,330,600 test/tiger.pdf
+  pdf2image -o test_out/ex5 --dpi 200 -f tif --multipage --pass secret --verb 3 test
+  pdf2image -o test_out/ex6 --hres 100 --format jpg --pass secret --subfolders --verb 3 test
+
