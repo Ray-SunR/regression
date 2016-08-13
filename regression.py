@@ -277,23 +277,29 @@ class Regression(object):
 									ret = re.match(pattern, file)
 									page_num = ret.group(1)
 
-									new_diff = documents.Difference()
-									new_metric = self.__diff_metrics[os.path.basename(file)]
-									new_diff.set('version', tarversion)
-									new_diff.set('metrics', new_metric)
-
 									new_diff_page = documents.Page()
 									new_diff_page.set('version', tarversion)
 									new_diff_page.set('document_name', benchmark['document_name'])
 									new_diff_page.set('ext', 'png')
 									new_diff_page.set('page_num', page_num)
 
-									with open(file, 'r') as mfile:
+									assert os.path.basename(file) in self.__tar_out_diff_paths_map
+									new_diff_page_path = self.__tar_out_diff_paths_map[os.path.basename(file)]
+									with open(new_diff_page_path, 'r') as mfile:
 										new_diff_page.set('binary', mfile.read())
 
+									assert os.path.basename(file) in self.__tar_out_diff_paths_map
+									new_metric = self.__diff_metrics[os.path.basename(file)]
+									new_metric.set('page_num', page_num)
+									new_metric.set('page', new_diff_page)
 
+									new_diff = documents.Difference()
+									new_diff.set('version', tarversion)
+									new_diff.set('metrics', new_metric)
 
-
+									benchmark.get('diffs').append(new_diff)
+									cursor['benchmarks'] = benchmark
+									db_documents.update_one({'hash': document.get('hash'), '$set': benchmark})
 
 					else:
 						# append benchmark

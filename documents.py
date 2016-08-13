@@ -70,8 +70,8 @@ class Benchmark(Base):
 				diff_page.set('page_num', ret.group(1))
 				diff_page.set('ext', 'png')
 
-				assert file in regression.RefOutDiffMap()
-				diff_page_path = regression.RefOutDiffMap()[file]
+				assert os.path.basename(file) in regression.RefOutDiffMap()
+				diff_page_path = regression.RefOutDiffMap()[os.path.basename(file)]
 				with open(diff_page_path, 'r') as mfile:
 					diff_page.set('binary', mfile.read())
 
