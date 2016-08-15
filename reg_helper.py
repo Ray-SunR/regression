@@ -27,7 +27,7 @@ class Regression(object):
 				self.__bin_path = ref_bin_dir
 			elif tar_bin_dir:
 				self.__bin_path = tar_bin_dir
-			print(self.__GetVersion())
+			print(str(self.__GetVersion()))
 			return
 
 		assert (ref_use_sdk and not ref_bin_dir or ref_bin_dir and not ref_use_sdk) or (tar_use_sdk and not tar_bin_dir or tar_bin_dir and not tar_use_sdk)
@@ -61,7 +61,7 @@ class Regression(object):
 			assert os.path.exist(self.__bin_path)
 
 		self.__concurency = concur
-		self.__license = "Renchen:ENTCPU:1::W+:AMS(20161216):F97CE727551EB1D47956138CE26EE06F06009EF638D64AB231F5C7"
+		self.__license = ""#"Renchen:ENTCPU:1::W+:AMS(20161216):F97CE727551EB1D47956138CE26EE06F06009EF638D64AB231F5C7"
 
 	def __ImportRefLib(self):
 		try:
@@ -87,7 +87,7 @@ class Regression(object):
 	def __RunImpl(self, filepath):
 		if self.__lib:
 			lib = self.__lib
-			lib.PDFNet.Initialize(self.__license)
+			lib.PDFNet.Initialize()#self.__license)
 			output_path = self.__output_dir
 			try:
 				wordoc = lib.PDFDoc(filepath)
@@ -97,7 +97,7 @@ class Regression(object):
 				it = wordoc.GetPageIterator()
 				pagenum = 1
 				prefix = os.path.commonprefix([filepath, self.__src_testdir])
-				tail = os.path.relpath(filepath, prefix)
+				tail = os.path.relpath(os.path.splitext(filepath)[0], prefix)
 				basename = os.path.basename(self.__src_testdir)
 				while (it.HasNext()):
 					output_file = os.path.join(output_path, basename, tail + "_" + str(pagenum) + ".png")
@@ -126,8 +126,7 @@ def main():
 						help="The source test file path in a single string delimited by '|' directory")
 	parser.add_argument("-v",
 						"--version",
-						type=bool,
-						default=False,
+						action="store_true",
 						help="Get the current version of the sdk")
 	parser.add_argument("-s",
 						"--src_dir",
@@ -150,23 +149,19 @@ def main():
 						help="The concurency value. Default is 4")
 	parser.add_argument("-ursdk",
 						"--use_ref_sdk",
-						type=bool,
 						default=False,
 						help="Specify whether to use reference PDFNet SDK")
 	parser.add_argument("-utsdk",
 						"--use_tar_sdk",
-						type=bool,
 						default=False,
 						help="Specify whether to use target PDFNet SDK")
 	parser.add_argument("-rbinpath",
 						"--ref_bin_path",
 						type=str,
-						default=None,
 						help="Specify the binary executable path for reference")
 	parser.add_argument("-tbinpath",
 						"--tar_bin_path",
 						type=str,
-						default=None,
 						help="Specify the binary executable path for reference")
 	args = parser.parse_args()
 
