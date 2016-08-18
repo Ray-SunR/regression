@@ -237,8 +237,8 @@ class Regression(object):
 
 
 	def GetVersion(self):
-		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', str(self.__use_ref_sdk), '--version']
-		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', str(self.__use_tar_sdk), '--version']
+		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', str(self.__use_ref_sdk), '--version', '--ref_bin_path', self.__ref_bin_dir]
+		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', str(self.__use_tar_sdk), '--version', '--tar_bin_path', self.__tar_bin_dirA]
 
 		refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
 		tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
@@ -316,76 +316,53 @@ class Regression(object):
 
 		refversion, tarversion = self.GetVersion()
 
+		refversion = '6.6143323'
+		tarversion = '6.7043245'
+		alldocs = []
 		for path in self.__src_file_paths:
-			document = documents.Document()
 			benchmark = documents.Benchmark()
-			document.populate(path)
-
-			cursor = db_documents.find_one({'hash': document.get('hash')})
-			if cursor and False:
-				for benchmark in cursor['benchmarks']:
-					if benchmark['version'] == refversion:
-						# meaning that the ref outputs already exist, don't need to update
-						# the benchmark itself
-						for diff in benchmark['diffs']:
-							if diff['version'] == tarversion:
-								# meaning that the tar outputs already exist, don't need to
-								# update the diff
-								pass
-							else:
-								# only update diff
-
-								import re
-								pattern = benchmark['document_name'] + '.*_(\d+)\.png'
-								for file in self.__tar_out_paths:
-									ret = re.match(pattern, file)
-									page_num = ret.group(1)
-
-									new_diff_page = documents.Page()
-									new_diff_page.set('version', tarversion)
-									new_diff_page.set('document_name', benchmark['document_name'])
-									new_diff_page.set('ext', 'png')
-									new_diff_page.set('page_num', page_num)
-
-									assert os.path.basename(file) in self.__tar_out_diff_paths_map
-									new_diff_page_path = self.__tar_out_diff_paths_map[os.path.basename(file)]
-									with open(new_diff_page_path, 'r') as mfile:
-										new_diff_page.set('binary', mfile.read())
-
-									assert os.path.basename(file) in self.__tar_out_diff_paths_map
-									new_metric = self.__diff_metrics[os.path.basename(file)]
-									new_metric.set('page_num', page_num)
-									new_metric.set('page', new_diff_page)
-
-									new_diff = documents.Difference()
-									new_diff.set('version', tarversion)
-									new_diff.set('metrics', new_metric)
-
-									benchmark.get('diffs').append(new_diff)
-									cursor['benchmarks'] = benchmark
-									db_documents.update_one({'hash': document.get('hash'), '$set': benchmark})
-
-					else:
-						# append benchmark
-						benchmark.set('type', self.GetRefType())
-						benchmark.set('version', refversion)
-						benchmark.populate(self)
-						cursor['benchmarks'].append(benchmark)
-						db_documents.update_one({'hash': cursor['hash']}, {"$set": cursor})
+			if db_benchmarks.find_one({'version': refversion}):
+				# only append diffs
+				pass
 			else:
-				db_documents.update_one({'hash': document.get('hash')}, {'$set': document.obj()}, upsert=True)
-
 				# brand new
 				benchmark.set('type', self.GetRefType())
 				benchmark.set('version', refversion)
-				benchmark.populate(self, document, collections)
+
+			run = documents.Run()
+			benchmark.get('runs').append(run)
+
+			document = documents.Document()
+			document.get('benchmarks').append(benchmark)
+			document.populate(path)
+
+			run.populate(document)
+			run.set('version', refversion)
+
+			benchmark.populate(self, document, run)
+			alldocs.append(document)
+
+		ret = []
+		for document in alldocs:
+			#obj = {}
+			#document.serialize(obj)
+			#ret.append(obj)
+			id = document.bson(collections)
+			ret.append(id)
+
+		print(ret)
+		#with open('serializeout.json', 'w') as file:
+		#	file.write(json.dumps(ret, ensure_ascii=False, indent=4, separators=(',', ': ')))
+
 
 def main():
-	regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
+	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
 
-	#regression.RunAllFiles()
+	regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_bin_dir='/Users/Renchen/Documents/Work/GitHub/regression/ref_bin/pdf2image', tar_bin_dir='/Users/Renchen/Documents/Work/GitHub/regression/tar_bin/pdf2image')
+
+	regression.RunAllFiles()
 	#regression.RunImageDiff()
-	regression.UpdateDatabase()
+	#regression.UpdateDatabase()
 
 if __name__ == '__main__':
 	main()

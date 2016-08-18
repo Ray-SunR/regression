@@ -4,6 +4,8 @@ from multiprocessing.dummy import Pool as ThreadPool
 import os.path
 import sys
 import argparse
+import subprocess
+import re
 
 class Regression(object):
 	def __init__(self,
@@ -30,6 +32,10 @@ class Regression(object):
 			print(str(self.__GetVersion()))
 			return
 
+		if isinstance(ref_use_sdk, str):
+			ref_use_sdk = ref_use_sdk in ['true', 'True', 'TRUE', '1']
+		if isinstance(tar_use_sdk, str):
+			tar_use_sdk = tar_use_sdk in ['true', 'True', 'TRUE', '1']
 		assert (ref_use_sdk and not ref_bin_dir or ref_bin_dir and not ref_use_sdk) or (tar_use_sdk and not tar_bin_dir or tar_bin_dir and not tar_use_sdk)
 
 		assert ref_output_dir and not tar_output_dir or tar_output_dir and not ref_output_dir
@@ -58,7 +64,7 @@ class Regression(object):
 		assert self.__files and self.__output_dir
 
 		if self.__bin_path:
-			assert os.path.exist(self.__bin_path)
+			assert os.path.exists(self.__bin_path)
 
 		self.__concurency = concur
 		self.__license = ""#"Renchen:ENTCPU:1::W+:AMS(20161216):F97CE727551EB1D47956138CE26EE06F06009EF638D64AB231F5C7"
@@ -82,7 +88,14 @@ class Regression(object):
 			sys.exit(-1)
 
 	def __GetVersion(self):
-		return self.__lib.PDFNet.GetVersion()
+		if self.__lib:
+			return self.__lib.PDFNet.GetVersion()
+		else:
+			assert self.__bin_path
+			if os.path.exists(self.__bin_path):
+				commands = [self.__bin_path, '-v']
+				process = subprocess.Popen(commands, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+				return process.communicate()[0]
 
 	def __RunImpl(self, filepath):
 		if self.__lib:
@@ -109,6 +122,35 @@ class Regression(object):
 				print e
 		else:
 			assert self.__bin_path
+			fullbinpath = self.__bin_path if os.path.isfile(self.__bin_path) else os.path.join(self.__bin_path, 'pdf2image')
+
+			prefix = os.path.commonprefix([filepath, self.__src_testdir])
+			tail = os.path.relpath(os.path.dirname(filepath), prefix)
+			basename = os.path.basename(self.__src_testdir)
+			output_dir = os.path.join(self.__output_dir, basename, tail)
+			output_dir = os.path.normpath(output_dir)
+			commands = [fullbinpath, filepath, '--verb', '2', '-o', output_dir]
+			process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+			if process.returncode:
+				print('An error occurred when converting: ' + filepath)
+
+			stdout = process.communicate()[0]
+			stdout = stdout.split('\n')
+			pattern = 'Rendering page: (\d+)'
+			num_pages = None
+			filename_noext = os.path.splitext(os.path.basename(filepath))[0]
+			for line in stdout:
+				match = re.search(pattern, line)
+				if match:
+					num_pages = match.group(1)
+
+			for page_num in range(1, int(num_pages) + 1):
+				fulloutpath = os.path.join(output_dir, filename_noext + '_' + str(page_num) + '.png')
+				fulloutpath = os.path.normpath(fulloutpath)
+				if not os.path.exists(fulloutpath):
+					sys.stderr.write(fulloutpath + ' not found!')
+				else:
+					print(os.path.join(output_dir, filename_noext + '_' + str(page_num) + '.png'))
 
 
 	def Run(self):
