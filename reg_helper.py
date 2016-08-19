@@ -129,12 +129,14 @@ class Regression(object):
 			basename = os.path.basename(self.__src_testdir)
 			output_dir = os.path.join(self.__output_dir, basename, tail)
 			output_dir = os.path.normpath(output_dir)
-			commands = [fullbinpath, filepath, '--verb', '2', '-o', output_dir]
+			commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
 			process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 			if process.returncode:
 				print('An error occurred when converting: ' + filepath)
 
 			stdout = process.communicate()[0]
+			print(stdout)
+			return
 			stdout = stdout.split('\n')
 			pattern = 'Rendering page: (\d+)'
 			num_pages = None
@@ -207,9 +209,13 @@ def main():
 						help="Specify the binary executable path for reference")
 	args = parser.parse_args()
 
+	files = ''
+	with open('cache', 'r') as file:
+		files = file.read()
+
 	regression = Regression(ref_output_dir=args.ref_out_dir,
 							tar_output_dir=args.tar_out_dir,
-							files=args.files,
+							files=files,
 							version=args.version,
 							src_dir=args.src_dir,
 							concur=args.concurency,

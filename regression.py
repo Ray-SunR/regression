@@ -190,43 +190,30 @@ class Regression(object):
 			file.write(json_str)
 
 
-	def GetAllFiles(self, dir, ext):
-		if not os.path.exists(os.path.join(self.__ref_out, os.path.basename(self.__src_testdir))):
-			os.makedirs(os.path.join(self.__ref_out, os.path.basename(self.__src_testdir)))
-
-		if not os.path.exists(os.path.join(self.__tar_out, os.path.basename(self.__src_testdir))):
-			os.makedirs(os.path.join(self.__tar_out, os.path.basename(self.__src_testdir)))
-
+	def GetAllFiles(self, dir, ext_list):
 		if not self.__src_file_paths:
-			ret = []
-			filenames = os.listdir(dir)
-			for filename in filenames:
-				if os.path.isdir(os.path.join(dir, filename)):
-					rel_path = os.path.relpath(os.path.join(dir, filename), self.__src_testdir)
-					basename = os.path.basename(self.__src_testdir)
-					# Create output dirs if necessary
-					ref_base = os.path.join(self.__ref_out, basename)
-					tar_base = os.path.join(self.__tar_out, basename)
-					if not os.path.exists(os.path.join(ref_base, rel_path)):
-						os.makedirs(os.path.join(ref_base, rel_path))
-					if not os.path.exists(os.path.join(tar_base, rel_path)):
-						os.makedirs(os.path.join(tar_base, rel_path))
-					# Go recursively
-					ret += self.GetAllFiles(os.path.join(dir, filename), ext)
-				elif os.path.isfile(os.path.join(dir, filename)) and os.path.splitext(filename)[1] == ext:
-					ret.append(os.path.join(dir, filename))
-			self.__src_file_paths = ret
-			return ret
-		else:
-			return self.__src_file_paths
+			for root, subFolders, files in os.walk(dir):
+				for file in files:
+					if os.path.splitext(file)[1] in ext_list:
+						relpath = os.path.relpath(root, self.__src_testdir)
+						if not os.path.exists(os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath)):
+							os.makedirs(os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath))
+						if not os.path.exists(os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath)):
+							os.makedirs(os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath))
+						self.__src_file_paths.append(os.path.join(root, file))
+
+		return self.__src_file_paths
 
 	def RunAllFiles(self):
-		allfiles = self.GetAllFiles(self.__src_testdir, '.pdf')
+		allfiles = self.GetAllFiles(self.__src_testdir, ['.pdf', '.pptx', '.docx'])
 
 		allfiles = '|'.join(map(str, allfiles))
-		refargs = ['python', 'reg_helper.py','--files', allfiles, '--src_dir', self.__src_testdir, '--ref_out_dir', self.__ref_out, '--concurency', str(self.__concurency), '--use_ref_sdk', str(self.__use_ref_sdk), '--ref_bin_path', self.__ref_bin_dir]
+		with open('cache', 'w') as file:
+			file.write(allfiles)
 
-		tarargs = ['python', 'reg_helper.py', '--files', allfiles, '--src_dir', self.__src_testdir, '--tar_out_dir', self.__tar_out, '--concurency', str(self.__concurency), '--use_tar_sdk', str(self.__use_tar_sdk), '--tar_bin_path', self.__tar_bin_dir]
+		refargs = ['python', 'reg_helper.py','--files', '', '--src_dir', self.__src_testdir, '--ref_out_dir', self.__ref_out, '--concurency', str(self.__concurency), '--use_ref_sdk', str(self.__use_ref_sdk), '--ref_bin_path', self.__ref_bin_dir]
+
+		tarargs = ['python', 'reg_helper.py', '--files', '', '--src_dir', self.__src_testdir, '--tar_out_dir', self.__tar_out, '--concurency', str(self.__concurency), '--use_tar_sdk', str(self.__use_tar_sdk), '--tar_bin_path', self.__tar_bin_dir]
 
 		refregression = subprocess.Popen(refargs)
 		tarregression = subprocess.Popen(tarargs)
@@ -358,7 +345,7 @@ class Regression(object):
 def main():
 	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
 
-	regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_bin_dir='/Users/Renchen/Documents/Work/GitHub/regression/ref_bin/pdf2image', tar_bin_dir='/Users/Renchen/Documents/Work/GitHub/regression/tar_bin/pdf2image')
+	regression = Regression(src_testdir='D:/OfficeTest/UnitTests', ref_outdir='D:/Regression/Ref', tar_outdir='D:/Regression/Target', diff_outdir='D:/Regression/Diff', concur=4, ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe', tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe')
 
 	regression.RunAllFiles()
 	#regression.RunImageDiff()
