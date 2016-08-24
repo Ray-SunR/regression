@@ -41,6 +41,16 @@ class Base(object):
 						obj = self._impl[key]
 					lobj.append(obj)
 				bson[key] = lobj
+			elif isinstance(self._impl[key], dict):
+				obj = {}
+				for k in self._impl[key].keys():
+					lst = self._impl[key][k]
+					for diff in lst:
+						if isinstance(diff, Base):
+							tmp_obj = {}
+							diff.serialize(tmp_obj)
+							obj[key] = tmp_obj
+				bson[key] = obj
 			else:
 				assert False
 
@@ -62,12 +72,14 @@ class Document(Base):
 			'benchmarks': [ ] # list(Benchmarks)
 		}
 
-	def bson(self, collections):
+	def bson(self, collections, refversion, tarversion):
 		benchmark_ids = []
 		for benchmark in self.get('benchmarks'):
-			assert isinstance(benchmark, Base)
-			id = benchmark.bson(collections)
-			benchmark_ids.append(id)
+			found_benchmark = collections['benchmarks'].find_one({'hash': self.get('hash'), 'version': refversion})
+			if not found_benchmark:
+				assert isinstance(benchmark, Base)
+				id = benchmark.bson(collections)
+				benchmark_ids.append(id)
 
 		obj = self.__dummy_copy() 
 		obj['benchmarks'] = benchmark_ids
@@ -100,6 +112,7 @@ class Document(Base):
 		ret['path'] = self.get('path')
 		return ret
 
+# A run is a container for storing reference runs and its diffs of other revisions
 class Run(Base):
 	def __init__(self):
 		self._impl = {
@@ -107,14 +120,14 @@ class Run(Base):
 			'version':'', #version
 			'hash': '', # document hash
 			'pages': [], # list(Page_id)
-			'diffs': [] # list(Difference_id)
+			'diffs': {} # a map between version and list of (diff_metrics) sorted by page number
 		}
 
 	def populate(self, document):
 		self.set('document_name', document.get('document_name'))
 		self.set('hash', document.get('hash'))
 
-	def bson(self, collections):
+	def bson(self, collections, refversion, tarversion):
 		page_ids = []
 		diff_ids = []
 		for page in self.get('pages'):
@@ -122,19 +135,22 @@ class Run(Base):
 			id = page.bson(collections)
 			page_ids.append(id)
 
-		for diff in self.get('diffs'):
-			assert isinstance(diff, Base)
-			id = diff.bson(collections)
-			diff_ids.append(id)
+		for key in self.get('diffs').keys():
+			diffs = self.get('diffs')[key]
+			for diff in diffs:
+				id = diff.bson(collections, refversion, tarversion)
+				diff_ids.append(id)
 
 		obj = self.__dummy_copy()
 		
 		obj['pages'] = page_ids
-		obj['diffs'] = diff_ids
+		obj['diffs'][tarversion] = diff_ids
 		
 		found = collections['runs'].find_one({'version': self.get('version'), 'document_name': self.get('document_name'), 'hash': self.get('hash')})
 		if found:
-			collections['runs'].update_one({'version': self.get('version'), 'document_name': self.get('document_name'), 'hash': self.get('hash')}, {'$push': {'$each': {'pages': page_ids, 'diffs': diff_ids}}})
+			key = 'diffs.' + tarversion
+			# if found, only add the diffs. Don't have to update pages
+			collections['runs'].update_one({'_id': found._id}, {'$set':{key: diff_ids}})
 			return  found['_id']
 		else:
 			inserted = collections['runs'].insert_one(obj)
@@ -148,7 +164,7 @@ class Run(Base):
 		ret['hash'] = self.get('hash')
 		return ret
 
-
+# A benchmark is a container for reference runs
 class Benchmark(Base):
 	def __init__(self):
 		self._impl = {
@@ -161,9 +177,11 @@ class Benchmark(Base):
 	def bson(self, collections):
 		run_ids = []
 		for run in self.get('runs'):
-			assert isinstance(run, Base)
-			runid = run.bson(collections)
-			run_ids.append(runid)
+			found_run = collections['runs'].find_one({'version': run.get('version'), 'hash': run.get('hash')})
+			if not found_run:
+				assert isinstance(run, Base)
+				runid = run.bson(collections)
+				run_ids.append(runid)
 
 		found = collections['benchmarks'].find_one({'version': self.get('version'), 'hash': self.get('hash')})
 		if found:
@@ -195,38 +213,44 @@ class Benchmark(Base):
 			if not ret:
 				continue
 
+			page_num = int(ret.group(1)) if ret.group(1) else 1
 			page = Page()
 			run.get('pages').append(page)
 
 			page.set('hash', hash)
 			page.set('version', self.get('version'))
 			page.set('document_name', dname)
-			page.set('page_num', ret.group(1))
+			page.set('page_num', page_num)
 			page.set('ext', 'png')
 			with open(file, 'r') as mfile:
 				page.set('binary', Binary(mfile.read()))
 				page.set('path', file)
 
 
-			metrics = regression.DiffMetrics()
-			assert os.path.basename(file) in metrics
-			metric = metrics[os.path.basename(file)]
+			metrics = regression.DiffMetricsRefMap()
+			assert file in metrics
+			metric = metrics[file]
 			metric.set('version', regression.GetTarVersion())
 			metric.set('hash', hash)
-			run.get('diffs').append(metric)
+			metric.set('document_name', dname)
+
+			if regression.GetTarVersion() in run.get('diffs').keys():
+				metric = run.get('diffs')[regression.GetTarVersion()][0]
+			else:
+				run.get('diffs')[regression.GetTarVersion()] = []
+				run.get('diffs')[regression.GetTarVersion()].append(metric)
 
 			diff_page = Page()
-			metric.set('page', diff_page)
-			metric.set('page_num', ret.group(1))
+			metric.get('pages').append(diff_page)
 
 			diff_page.set('version', regression.GetTarVersion())
 			diff_page.set('document_name', dname)
 			diff_page.set('hash', hash)
-			diff_page.set('page_num', ret.group(1))
+			diff_page.set('page_num', page_num)
 			diff_page.set('ext', 'png')
 
-			assert os.path.basename(file) in regression.RefOutDiffMap()
-			diff_page_path = regression.RefOutDiffMap()[os.path.basename(file)]
+			assert file in regression.RefOutDiffMap()
+			diff_page_path = regression.RefOutDiffMap()[file]
 			with open(diff_page_path, 'r') as mfile:
 				diff_page.set('binary', Binary(mfile.read()))
 				diff_page.set('path', diff_page_path)
@@ -279,29 +303,30 @@ class DifferenceMetric(Base):
 	def __init__(self, obj=None):
 		Base.__init__(self)
 		self._impl = {
-			'diff_percentage': '', # Difference percentage
-			'page_num': '' , # page number
-			'page': '', # page_id
+			'diff_percentage': [], # Difference percentage
+			'pages': [], # page_ids
 			'hash': '', # document hash
 			'version': '', #version
+			'document_name': '', # document name
 		}
 		if obj:
 			assert isinstance(obj, dict)
-			self.set('page_num', obj['page_num'])
 			self.set('diff_percentage', obj['diff_percentage'])
-			self.set('page', obj['page'])
+			self.set('pages', obj['pages'])
+			self.set('document_name', obj['document_name'])
 
 	def bson(self, collections):
-		page = self.get('page')
-		id = None
-		if isinstance(page, Base):
-			id = page.bson(collections)
+		pages = self.get('pages')
+		ids = []
+		if isinstance(pages, Base):
+			for page in pages:
+				ids.append(page.bson(collections))
 
-		found = collections['difference_metrics'].find_one({'version': self.get('version'), 'hash': self.get('hash'), 'page_num': self.get('page_num')})
+		found = collections['difference_metrics'].find_one({'version': self.get('version'), 'hash': self.get('hash')})
 		obj = self.__dummy_copy()
-		obj['page'] = id
+		obj['pages'] = ids
 		if found:
-			collections['difference_metrics'].update_one({'version': self.get('version'), 'hash': self.get('hash'), 'page_num': self.get('page_num')}, {'page': id})
+			collections['difference_metrics'].update_one({'version': self.get('version'), 'hash': self.get('hash')}, {'pages': ids})
 			return found['_id']
 		else:
 			inserted = collections['difference_metrics'].insert_one(obj)
@@ -311,10 +336,41 @@ class DifferenceMetric(Base):
 		diff = DifferenceMetric()
 		ret = diff.obj()
 		ret['diff_percentage'] = self.get('diff_percentage')
-		ret['page_num'] = self.get('page_num')
 		ret['hash'] = self.get('hash')
 		ret['version'] = self.get('version')
+		ret['document_name'] = self.get('document_name')
 		return ret
+
+	def populate(self, regression, document, run):
+		pattern = os.path.splitext(document.get('document_name'))[0] + '(?:\.png|_(\d+).png)'
+		dname = document.get('document_name')
+		hash = document.get('hash')
+
+		self.set('hash', hash)
+		self.set('version', regression.GetTarVersion())
+		self.set('document_name', dname)
+
+		import fnmatch
+		ppaths = fnmatch.filter(regression.TarOutFilePaths(), pattern)
+
+		metrics = regression.DiffMetricsTarMap()
+		for path in ppaths:
+			ret = re.search(pattern, path)
+			assert(ret)
+			assert(path in metrics)
+			metric = metrics[path]
+			self.set('diff_percentage', metric.get('diff_percentage'))
+
+			diff_page = Page()
+			metric.get('pages').append(diff_page)
+
+			diff_page.set('version', regression.GetTarVersion())
+			diff_page.set('document_name', dname)
+			diff_page.set('hash', hash)
+			diff_page.set('page_num', int(ret.group(1)))
+			diff_page.set('ext', 'png')
+			self.get('pages').append(diff_page)
+
 
 
 
