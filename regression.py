@@ -105,32 +105,42 @@ class Regression(object):
 		self.__diff_out_paths = []
 		self.__src_file_paths = []
 
-		self.__ref_version, self.__tar_version = self.GetVersion()
+		self.__ref_version, self.__tar_version = self.get_versions()
+
 
 	# Retun the relationship between ref out files and diff files
 	# store their paths
-	def RefOutDiffMap(self):
+	def ref_out_diff_map(self):
 		return self.__ref_out_diff_paths_map
 
-	def RefOutFilePaths(self):
+	def out_dir(self):
+		return self.__out_dir
+
+	def ref_out(self):
+		return self.__ref_out
+
+	def tar_out(self):
+		return self.__tar_out
+
+	def ref_out_file_paths(self):
 		return self.__ref_out_paths
 
-	def TarOutFilePaths(self):
+	def tar_out_file_paths(self):
 		return self.__tar_out_paths
 
-	def DiffOutFilePaths(self):
+	def diff_out_file_paths(self):
 		return self.__diff_out_paths
 
-	def SrcFilePaths(self):
+	def src_file_paths(self):
 		return self.__src_file_paths
 
-	def DiffMetricsRefMap(self):
+	def diff_metrics_ref_map(self):
 		return self.__diff_metrics_ref_map
 
-	def DiffMetricsTarMap(self):
+	def diff_metrics_tar_map(self):
 		return self.__diff_metrics_tar_map
 
-	def __RunRegressionImpl(self, lib, filepath, output_path):
+	def __run_regression_impl(self, lib, filepath, output_path):
 		try:
 			wordoc = lib.PDFDoc(filepath)
 			draw = lib.PDFDraw()
@@ -151,13 +161,13 @@ class Regression(object):
 		except Exception as e:
 			print e
 
-	def __RunImageDiffImpl(self, tuple):
+	def __run_image_diff_impl(self, tuple):
 		args = ['python', 'image_diff.py', '--file1', tuple[0], '--file2', tuple[1], '--output', tuple[2]]
 		print('Running diff for %s and %s' % (tuple[0], tuple[1]))
 		process = subprocess.Popen(args, stdout=subprocess.PIPE)
 		stdout = process.communicate()[0]
 		if stdout:
-			retdict = json.loads(stdout.replace("\'", '"'))
+			retdict = json.loads(stdout)
 			diff_image_path = retdict['diff_image_path']
 			diff_percentage = retdict['diff_percentage']
 			diff_metrics = documents.DifferenceMetric()
@@ -170,20 +180,20 @@ class Regression(object):
 
 	def __populate_file_paths(self):
 		if not self.__src_file_paths:
-				self.__GetFilesRecursively(self.__src_testdir, self.__exts, self.__src_file_paths)
+				self.__get_files_recursively(self.__src_testdir, self.__exts, self.__src_file_paths)
 
 		if self.__out_dir:
 			# if this is a centralize mode, then we don't need to populate ref_out, tar_out, diff_out, because the outputs reside in each document's hash
 			pass
 		else:
 			if not self.__ref_out_paths:
-				self.__GetFilesRecursively(self.__ref_out, ['.png'], self.__ref_out_paths)
+				self.__get_files_recursively(self.__ref_out, ['.png'], self.__ref_out_paths)
 
 			if not self.__tar_out_paths:
-				self.__GetFilesRecursively(self.__tar_out, ['.png'], self.__tar_out_paths)
+				self.__get_files_recursively(self.__tar_out, ['.png'], self.__tar_out_paths)
 
 			if not self.__diff_out_paths:
-				self.__GetFilesRecursively(self.__diff_out, ['.png'], self.__diff_out_paths)
+				self.__get_files_recursively(self.__diff_out, ['.png'], self.__diff_out_paths)
 
 	def __delete_all(self, folder):
 		import os, shutil
@@ -197,7 +207,20 @@ class Regression(object):
 			except Exception as e:
 				print(e)
 
-	def RunImageDiff(self):
+	def __cache(self):
+		dict = {}
+		dict['out_dir'] = '' if self.__out_dir else self.__out_dir
+		dict['ref_out'] = '' if self.__ref_out else self.__ref_out
+		dict['tar_out'] = '' if self.__tar_out else self.__tar_out
+		dict['diff_metrics_ref_map'] = self.__diff_metrics_ref_map
+		dict['diff_metrics_tar_map'] = self.__diff_metrics_tar_map
+		dict['ref_out_diff_map'] = self.__ref_out_diff_paths_map
+		dict['tar_out_diff_map'] = self.__tar_out_diff_paths_map
+		with open('cache.json', 'w') as file:
+			json_str = json.dumps(dict, ensure_ascii=False, cls=documents.JsonEncoder)
+			file.write(json_str)
+
+	def run_image_diff(self):
 		self.__populate_file_paths()
 		pool = ThreadPool(8)
 		args = []
@@ -207,8 +230,8 @@ class Regression(object):
 				hash = self.__hash(file)
 				ref_image_paths = []
 				tar_image_paths = []
-				self.__GetFilesRecursively(os.path.join(self.__out_dir, hash, 'ref'), '.png', ref_image_paths)
-				self.__GetFilesRecursively(os.path.join(self.__out_dir, hash, 'tar'), '.png', tar_image_paths)
+				self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'ref'), '.png', ref_image_paths)
+				self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'tar'), '.png', tar_image_paths)
 				ref_image_names = [os.path.split(path)[1] for path in ref_image_paths]
 				tar_image_names = [os.path.split(path)[1] for path in tar_image_paths]
 				for image_path in ref_image_paths:
@@ -226,20 +249,14 @@ class Regression(object):
 				tar_file = os.path.join(self.__tar_out, os.path.relpath(file, self.__ref_out))
 				args.append((file, tar_file, self.__diff_out))
 
-		pool.map(self.__RunImageDiffImpl, args)
+		pool.map(self.__run_image_diff_impl, args)
 		pool.close()
 		pool.join()
 
-		dict = {}
-		dict['diff_metrics'] = self.__diff_metrics_ref_map
-		dict['ref_out_diff_map'] = self.__ref_out_diff_paths_map
-		dict['tar_out_diff_map'] = self.__tar_out_diff_paths_map
-		with open('cache.json', 'w') as file:
-			json_str = json.dumps(dict, ensure_ascii=False, cls=documents.JsonEncoder)
-			file.write(json_str)
+		self.__cache()
 
 
-	def GetAllFiles(self, dir, ext_list):
+	def get_all_files(self, dir, ext_list):
 		if not self.__src_file_paths:
 			for root, subFolders, files in os.walk(dir):
 				for file in files:
@@ -263,8 +280,8 @@ class Regression(object):
 
 		return self.__src_file_paths
 
-	def RunAllFiles(self):
-		allfiles = self.GetAllFiles(self.__src_testdir, self.__exts)
+	def run_all_files(self):
+		allfiles = self.get_all_files(self.__src_testdir, self.__exts)
 
 		allfiles = '|'.join(map(str, allfiles))
 		with open('allfiles.txt', 'w') as file:
@@ -296,10 +313,12 @@ class Regression(object):
 		self.__populate_file_paths()
 
 		if self.__do_diff:
-			self.RunImageDiff()
+			self.run_image_diff()
+		else:
+			self.__cache()
 
 
-	def GetVersion(self):
+	def get_versions(self):
 		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', str(self.__use_ref_sdk), '--version', '--ref_bin_path', self.__ref_bin_dir]
 		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', str(self.__use_tar_sdk), '--version', '--tar_bin_path', self.__tar_bin_dir]
 
@@ -313,13 +332,13 @@ class Regression(object):
 		self.__tar_version = tarstdout
 		return (refstdout, tarstdout)
 
-	def GetRefVersion(self):
+	def get_reference_version(self):
 		return self.__ref_version
 
-	def GetTarVersion(self):
+	def get_target_version(self):
 		return self.__tar_version
 
-	def GetRefType(self):
+	def get_reference_run_type(self):
 		if self.__use_ref_sdk:
 			return 'sdk'
 		elif self.__ref_bin_dir:
@@ -327,7 +346,7 @@ class Regression(object):
 		else:
 			assert False
 
-	def GetTarType(self):
+	def get_target_run_type(self):
 		if self.__use_tar_sdk:
 			return 'sdk'
 		elif self.__tar_bin_dir:
@@ -335,7 +354,7 @@ class Regression(object):
 		else:
 			assert False
 
-	def __GetFilesRecursively(self, dir, exts, ret):
+	def __get_files_recursively(self, dir, exts, ret):
 		for root, dirnames, filenames in os.walk(dir):
 			for filename in filenames:
 				if os.path.splitext(filename)[1] in exts:
@@ -347,7 +366,7 @@ class Regression(object):
 			sha1 = hashlib.sha1(file.read())
 			return sha1.hexdigest()
 
-	def UpdateDatabase(self):
+	def __collections(self):
 		client = pymongo.MongoClient()
 		client.drop_database('pdftron_regression')
 		db = client.pdftron_regression
@@ -358,7 +377,7 @@ class Regression(object):
 		db_pages = db.pages
 		db_differences = db.differences
 		db_difference_metrics = db.difference_metrics
-		collections = {
+		return {
 			'documents': db_documents,
 			'benchmarks': db_benchmarks,
 			'pages': db_pages,
@@ -367,13 +386,20 @@ class Regression(object):
 			'difference_metrics': db_difference_metrics
 		}
 
-		if not self.__diff_metrics_ref_map or not self.__ref_out_diff_paths_map or not self.__tar_out_diff_paths_map:
+	def __recover_cache(self):
+		if not self.__diff_metrics_ref_map or not self.__diff_metrics_tar_map or not self.__ref_out_diff_paths_map or not self.__tar_out_diff_paths_map:
 			with open('cache.json', 'r') as file:
 				dict = json.loads(file.read())
-				diff_metrics = dict['diff_metrics']
+				diff_metrics_ref_map = dict['diff_metrics_ref_map']
+				diff_metrics_tar_map = dict['diff_metrics_tar_map']
+
 				if not self.__diff_metrics_ref_map:
-					for key in diff_metrics.keys():
-						self.__diff_metrics_ref_map[key] = documents.DifferenceMetric(diff_metrics[key])
+					for key in diff_metrics_ref_map.keys():
+						self.__diff_metrics_ref_map[key] = documents.DifferenceMetric(diff_metrics_ref_map[key])
+
+				if not self.__diff_metrics_tar_map:
+					for key in diff_metrics_tar_map.keys():
+						self.__diff_metrics_tar_map[key] = documents.DifferenceMetric(diff_metrics_tar_map[key])
 
 				if not self.__ref_out_diff_paths_map:
 					self.__ref_out_diff_paths_map = dict['ref_out_diff_map']
@@ -381,21 +407,33 @@ class Regression(object):
 				if not self.__tar_out_diff_paths_map:
 					self.__tar_out_diff_paths_map = dict['tar_out_diff_map']
 
+				if not self.__out_dir:
+					self.__out_dir = dict['out_dir']
+
+				if not self.__ref_out:
+					self.__ref_out = dict['ref_out']
+
+				if not self.__tar_out:
+					self.__tar_out = dict['tar_out']
+
+
 		self.__populate_file_paths()
 
-		refversion, tarversion = self.GetVersion()
+	def update_database(self):
+		collections = self.__collections()
+		self.__recover_cache()
+		refversion, tarversion = self.get_versions()
 
 		alldocs = []
 		for path in self.__src_file_paths:
 			hash = self.__hash(path)
 			benchmark = documents.Benchmark()
-			found_benchmark = db_benchmarks.find_one({'version': refversion, 'hash': hash})
+			found_benchmark = collections['benchmarks'].find_one({'version': refversion, 'hash': hash})
 			if found_benchmark:
-
 				pass
 			else:
 				# brand new
-				benchmark.set('type', self.GetRefType())
+				benchmark.set('type', self.get_reference_run_type())
 				benchmark.set('version', refversion)
 
 			run = documents.Run()
@@ -403,6 +441,7 @@ class Regression(object):
 
 			document = documents.Document()
 			document.get('benchmarks').append(benchmark)
+			document.set('hash', hash)
 			document.populate(path)
 
 			run.populate(document)
@@ -427,21 +466,21 @@ class Regression(object):
 def main():
 	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
 
-	regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
-							ref_outdir='D:/Regression/Ref',
-							tar_outdir='D:/Regression/Target',
-							diff_outdir='D:/Regression/Diff',
-							concur=4,
-							ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe',
-							tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
-							do_pdf=False,
-							do_docx=True,
-							do_pptx=True)
+	# #regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
+	# 						ref_outdir='D:/Regression/Ref',
+	# 						tar_outdir='D:/Regression/Target',
+	# 						diff_outdir='D:/Regression/Diff',
+	# 						concur=4,
+	# 						ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe',
+	# 						tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
+	# 						do_pdf=False,
+	# 						do_docx=True,
+	# 						do_pptx=True)
 
-	#regression = Regression(src_testdir='D:/PDFTest/Annotations', out_dir='D:/Regression', concur=4, ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe', tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe')
+	regression = Regression(src_testdir='test_files', out_dir='test_out', concur=4, ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_diff=True)
 
-	regression.RunAllFiles()
-	#regression.UpdateDatabase()
+	#regression.run_all_files()
+	regression.update_database()
 
 if __name__ == '__main__':
 	main()

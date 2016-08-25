@@ -96,12 +96,13 @@ class Document(Base):
 		self.set('document_name', os.path.basename(d_path))
 		self.set('ext', ext)
 		self.set('path', d_path)
-		try:
-			with open(d_path) as file:
-				sha1 = hashlib.sha1(file.read())
-				self.set('hash', sha1.hexdigest())
-		except Exception as e:
-			print(e)
+		if not self.get('hash'):
+			try:
+				with open(d_path) as file:
+					sha1 = hashlib.sha1(file.read())
+					self.set('hash', sha1.hexdigest())
+			except Exception as e:
+				print(e)
 
 	def __dummy_copy(self):
 		doc = Document()
@@ -224,52 +225,57 @@ class Benchmark(Base):
 		dname = document.get('document_name')
 		hash = document.get('hash')
 		self.set('hash', hash)
-		for file in regression.RefOutFilePaths():
-			ret = re.search(pattern, file)
-			if not ret:
-				continue
 
-			page_num = int(ret.group(1)) if ret.group(1) else 1
-			page = Page()
-			run.get('pages').append(page)
+		if regression.out_dir():
+			# find the image outputs based on hash
+			pass
+		else:
+			for file in regression.ref_out_file_paths():
+				ret = re.search(pattern, file)
+				if not ret:
+					continue
 
-			page.set('hash', hash)
-			page.set('version', self.get('version'))
-			page.set('document_name', dname)
-			page.set('page_num', page_num)
-			page.set('ext', 'png')
-			with open(file, 'r') as mfile:
-				page.set('binary', Binary(mfile.read()))
-				page.set('path', file)
+				page_num = int(ret.group(1)) if ret.group(1) else 1
+				page = Page()
+				run.get('pages').append(page)
+
+				page.set('hash', hash)
+				page.set('version', self.get('version'))
+				page.set('document_name', dname)
+				page.set('page_num', page_num)
+				page.set('ext', 'png')
+				with open(file, 'r') as mfile:
+					page.set('binary', Binary(mfile.read()))
+					page.set('path', file)
 
 
-			metrics = regression.DiffMetricsRefMap()
-			assert file in metrics
-			metric = metrics[file]
-			metric.set('version', regression.GetTarVersion())
-			metric.set('hash', hash)
-			metric.set('document_name', dname)
+				metrics = regression.diff_metrics_ref_map()
+				assert file in metrics
+				metric = metrics[file]
+				metric.set('version', regression.get_target_version())
+				metric.set('hash', hash)
+				metric.set('document_name', dname)
 
-			if regression.GetTarVersion() in run.get('diffs').keys():
-				metric = run.get('diffs')[regression.GetTarVersion()][0]
-			else:
-				run.get('diffs')[regression.GetTarVersion()] = []
-				run.get('diffs')[regression.GetTarVersion()].append(metric)
+				if regression.get_target_version() in run.get('diffs').keys():
+					metric = run.get('diffs')[regression.get_target_version()][0]
+				else:
+					run.get('diffs')[regression.get_target_version()] = []
+					run.get('diffs')[regression.get_target_version()].append(metric)
 
-			diff_page = Page()
-			metric.get('pages').append(diff_page)
+				diff_page = Page()
+				metric.get('pages').append(diff_page)
 
-			diff_page.set('version', regression.GetTarVersion())
-			diff_page.set('document_name', dname)
-			diff_page.set('hash', hash)
-			diff_page.set('page_num', page_num)
-			diff_page.set('ext', 'png')
+				diff_page.set('version', regression.get_target_version())
+				diff_page.set('document_name', dname)
+				diff_page.set('hash', hash)
+				diff_page.set('page_num', page_num)
+				diff_page.set('ext', 'png')
 
-			assert file in regression.RefOutDiffMap()
-			diff_page_path = regression.RefOutDiffMap()[file]
-			with open(diff_page_path, 'r') as mfile:
-				diff_page.set('binary', Binary(mfile.read()))
-				diff_page.set('path', diff_page_path)
+				assert file in regression.ref_out_diff_map()
+				diff_page_path = regression.ref_out_diff_map()[file]
+				with open(diff_page_path, 'r') as mfile:
+					diff_page.set('binary', Binary(mfile.read()))
+					diff_page.set('path', diff_page_path)
 
 
 class Page(Base):
@@ -366,13 +372,13 @@ class DifferenceMetric(Base):
 		hash = document.get('hash')
 
 		self.set('hash', hash)
-		self.set('version', regression.GetTarVersion())
+		self.set('version', regression.get_target_version())
 		self.set('document_name', dname)
 
 		import fnmatch
-		ppaths = fnmatch.filter(regression.TarOutFilePaths(), pattern)
+		ppaths = fnmatch.filter(regression.tar_out_file_paths(), pattern)
 
-		metrics = regression.DiffMetricsTarMap()
+		metrics = regression.diff_metrics_tar_map()
 		for path in ppaths:
 			ret = re.search(pattern, path)
 			assert(ret)
@@ -383,7 +389,7 @@ class DifferenceMetric(Base):
 			diff_page = Page()
 			metric.get('pages').append(diff_page)
 
-			diff_page.set('version', regression.GetTarVersion())
+			diff_page.set('version', regression.get_target_version())
 			diff_page.set('document_name', dname)
 			diff_page.set('hash', hash)
 			diff_page.set('page_num', int(ret.group(1)))

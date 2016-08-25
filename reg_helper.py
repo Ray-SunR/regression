@@ -101,7 +101,7 @@ class Regression(object):
 
 	def __GetVersion(self):
 		if self.__lib:
-			return self.__lib.PDFNet.GetVersion()
+			return self.__lib.PDFNet.get_versions()
 		else:
 			assert self.__bin_path
 			if os.path.exists(self.__bin_path):
@@ -181,7 +181,15 @@ class Regression(object):
 				else:
 					os.makedirs(output_dir)
 
-			commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
+			commands = ''
+			if os.path.splitext(os.path.split(fullbinpath)[1])[0] == 'docpub':
+				if os.path.splitext(filepath)[1] in ['.docx', '.pptx']:
+					commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
+				else:
+					commands = [fullbinpath, '-f', 'pdf', filepath, '-o', output_dir]
+			else:
+				commands = [fullbinpath, filepath, '-o', output_dir]
+
 			process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 			if process.returncode:
 				print('An error occurred when converting: ' + filepath)
