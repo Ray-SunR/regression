@@ -14,6 +14,7 @@ class Regression(object):
 				 version=False,
 				 ref_output_dir=None,
 				 tar_output_dir=None,
+				 out_dir=None,
 				 concur=4,
 				 ref_use_sdk=False,
 				 ref_bin_dir=None,
@@ -38,28 +39,39 @@ class Regression(object):
 			tar_use_sdk = tar_use_sdk in ['true', 'True', 'TRUE', '1']
 		assert (ref_use_sdk and not ref_bin_dir or ref_bin_dir and not ref_use_sdk) or (tar_use_sdk and not tar_bin_dir or tar_bin_dir and not tar_use_sdk)
 
-		assert ref_output_dir and not tar_output_dir or tar_output_dir and not ref_output_dir
+		self.__output_dir = None
+		self.__centrailize_mode = False
+		if out_dir:
+			self.__centrailize_mode = True
+			self.__output_dir = out_dir
+		else:
+			assert ref_output_dir and not tar_output_dir or tar_output_dir and not ref_output_dir
+			if ref_output_dir:
+				self.__output_dir = ref_output_dir
+			elif tar_output_dir:
+				self.__output_dir = tar_output_dir
 
 		self.__files = files.split('|')
 		self.__lib = None
 		self.__src_testdir = src_dir
+
+		self.__ref_or_tar = ''
 		if ref_use_sdk:
 			self.__ImportRefLib()
+			self.__ref_or_tar = 'ref'
 		elif tar_use_sdk:
 			self.__ImportTarLib()
+			self.__ref_or_tar = 'tar'
 
 		self.__bin_path = None
 		if ref_bin_dir:
 			self.__bin_path = ref_bin_dir
+			self.__ref_or_tar = 'ref'
 		elif tar_bin_dir:
 			self.__bin_path = tar_bin_dir
+			self.__ref_or_tar = 'tar'
 
-		self.__output_dir = None
-		if ref_output_dir:
-			self.__output_dir = ref_output_dir
-		elif tar_output_dir:
-			self.__output_dir = tar_output_dir
-
+		assert self.__ref_or_tar
 		assert self.__lib and not self.__bin_path or self.__bin_path and not self.__lib
 		assert self.__files and self.__output_dir
 
@@ -97,11 +109,40 @@ class Regression(object):
 				process = subprocess.Popen(commands, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
 				return process.communicate()[0]
 
+	def __hash(self, fpath):
+		import hashlib
+		with open(fpath, 'r') as file:
+			sha1 = hashlib.sha1(file.read())
+			return sha1.hexdigest()
+
+	def __delete_all(self, folder):
+		import os, shutil
+		for the_file in os.listdir(folder):
+			file_path = os.path.join(folder, the_file)
+			try:
+				if os.path.isfile(file_path):
+					os.unlink(file_path)
+				elif os.path.isdir(file_path):
+					shutil.rmtree(file_path)
+			except Exception as e:
+				print(e)
+
 	def __RunImpl(self, filepath):
+		hash = self.__hash(filepath)
 		if self.__lib:
 			lib = self.__lib
 			lib.PDFNet.Initialize()#self.__license)
 			output_path = self.__output_dir
+
+			if self.__centrailize_mode:
+				output_path = os.path.join(self.__output_dir, hash, self.__ref_or_tar)
+
+			if self.__centrailize_mode:
+				if os.path.exists(output_path):
+					self.__delete_all(output_path)
+				else:
+					os.makedirs(output_path)
+
 			try:
 				wordoc = lib.PDFDoc(filepath)
 				draw = lib.PDFDraw()
@@ -122,13 +163,24 @@ class Regression(object):
 				print e
 		else:
 			assert self.__bin_path
-			fullbinpath = self.__bin_path if os.path.isfile(self.__bin_path) else os.path.join(self.__bin_path, 'pdf2image')
+			fullbinpath = self.__bin_path
 
-			prefix = os.path.commonprefix([filepath, self.__src_testdir])
-			tail = os.path.relpath(os.path.dirname(filepath), prefix)
-			basename = os.path.basename(self.__src_testdir)
-			output_dir = os.path.join(self.__output_dir, basename, tail)
-			output_dir = os.path.normpath(output_dir)
+			output_dir = ''
+			if self.__centrailize_mode:
+				output_dir = os.path.join(self.__output_dir, hash, self.__ref_or_tar)
+			else:
+				prefix = os.path.commonprefix([filepath, self.__src_testdir])
+				tail = os.path.relpath(os.path.dirname(filepath), prefix)
+				basename = os.path.basename(self.__src_testdir)
+				output_dir = os.path.join(self.__output_dir, basename, tail)
+				output_dir = os.path.normpath(output_dir)
+
+			if self.__centrailize_mode:
+				if os.path.exists(output_dir):
+					self.__delete_all(output_dir)
+				else:
+					os.makedirs(output_dir)
+
 			commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
 			process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 			if process.returncode:
@@ -137,23 +189,6 @@ class Regression(object):
 			stdout = process.communicate()[0]
 			print(stdout)
 			return
-			stdout = stdout.split('\n')
-			pattern = 'Rendering page: (\d+)'
-			num_pages = None
-			filename_noext = os.path.splitext(os.path.basename(filepath))[0]
-			for line in stdout:
-				match = re.search(pattern, line)
-				if match:
-					num_pages = match.group(1)
-
-			for page_num in range(1, int(num_pages) + 1):
-				fulloutpath = os.path.join(output_dir, filename_noext + '_' + str(page_num) + '.png')
-				fulloutpath = os.path.normpath(fulloutpath)
-				if not os.path.exists(fulloutpath):
-					sys.stderr.write(fulloutpath + ' not found!')
-				else:
-					print(os.path.join(output_dir, filename_noext + '_' + str(page_num) + '.png'))
-
 
 	def Run(self):
 		pool = ThreadPool(self.__concurency)
@@ -177,6 +212,11 @@ def main():
 						type=str,
 						default=None,
 						help="The source test directory")
+	parser.add_argument("-o",
+						"--out_dir",
+						type=str,
+						default=None,
+						help="The output directory. Note: This option overrides --ref_out_dir, --tar_out_dir!")
 	parser.add_argument("-ro",
 						"--ref_out_dir",
 						type=str,
@@ -210,7 +250,7 @@ def main():
 	args = parser.parse_args()
 
 	files = ''
-	with open('cache', 'r') as file:
+	with open('allfiles.txt', 'r') as file:
 		files = file.read()
 
 	regression = Regression(ref_output_dir=args.ref_out_dir,
@@ -222,7 +262,8 @@ def main():
 							ref_use_sdk=args.use_ref_sdk,
 							ref_bin_dir=args.ref_bin_path,
 							tar_use_sdk=args.use_tar_sdk,
-							tar_bin_dir=args.tar_bin_path)
+							tar_bin_dir=args.tar_bin_path,
+							out_dir=args.out_dir)
 	if not args.version:
 		regression.Run()
 
