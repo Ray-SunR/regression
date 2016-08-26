@@ -21,6 +21,7 @@ class Regression(object):
 				 tar_use_sdk=False,
 				 tar_bin_dir=None):
 
+		self.__lib = None
 		if version:
 			if ref_use_sdk:
 				self.__ImportRefLib()
@@ -52,7 +53,6 @@ class Regression(object):
 				self.__output_dir = tar_output_dir
 
 		self.__files = files.split('|')
-		self.__lib = None
 		self.__src_testdir = src_dir
 
 		self.__ref_or_tar = ''

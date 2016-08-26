@@ -2,6 +2,7 @@ from PIL import ImageChops
 from PIL import Image
 import os
 import argparse
+import json
 
 def ImageCompare(im1, im2):
 		try:
@@ -47,14 +48,14 @@ def RunImageDiffImpl(tuple):
 
 
 				diff_percentage = ImageCompare(im1, img2)
-				if diff_percentage != 0:
+				if diff_percentage != 0 or True:
 					# Only save diff if they are different
 					diff_img.save(diff_image_path, 'PNG')
 					msg = {}
 					msg['diff_image_path'] = diff_image_path
 					msg['diff_percentage'] = diff_percentage
 
-					print(msg)
+					print(json.dumps(msg))
 
 
 		except Exception as e:

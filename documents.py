@@ -44,12 +44,11 @@ class Base(object):
 			elif isinstance(self._impl[key], dict):
 				obj = {}
 				for k in self._impl[key].keys():
-					lst = self._impl[key][k]
-					for diff in lst:
-						if isinstance(diff, Base):
-							tmp_obj = {}
-							diff.serialize(tmp_obj)
-							obj[key] = tmp_obj
+					diff= self._impl[key][k]
+					if isinstance(diff, Base):
+						tmp_obj = {}
+						diff.serialize(tmp_obj)
+						obj[k] = tmp_obj
 				bson[key] = obj
 			else:
 				assert False
@@ -187,7 +186,7 @@ class Benchmark(Base):
 			'version': '', # PK
 			'type': '', # sdk or pdf2image or docpub etc...
 			'hash': '', # pk, document hash
-			'runs': [] # list(Run_id)
+			'runs': {} # map between reference version and reference run
 		}
 
 	def bson(self, collections, refversion, tarversion):
@@ -218,6 +217,16 @@ class Benchmark(Base):
 		ret['hash'] = self.get('hash')
 		return ret
 
+	def __filter_files(self, dir, pattern):
+		result = {} # page num -> path
+		for file in os.listdir(dir):
+			ret = re.search(pattern, file)
+			if not ret:
+				continue
+			page_num = int(ret.group(1)) if ret.group(1) else 1
+			result[page_num] = os.path.join(dir, file)
+		return result
+
 	def populate(self, regression, document, run):
 		# remember: the output generated from binary (pdf2image) for single page pdf will not include the page number
 		pattern = os.path.splitext(document.get('document_name'))[0] + '(?:\.png|_(\d+).png)'
@@ -228,7 +237,53 @@ class Benchmark(Base):
 
 		if regression.out_dir():
 			# find the image outputs based on hash
-			pass
+			out_dir = regression.out_dir()
+			ref_dir = os.path.join(out_dir, hash, 'ref')
+			tar_dir = os.path.join(out_dir, hash, 'tar')
+			diff_dir = os.path.join(out_dir, hash, 'diff')
+
+			ref_outs = self.__filter_files(ref_dir, pattern)
+			tar_outs = self.__filter_files(tar_dir, pattern)
+			diff_outs = self.__filter_files(diff_dir, pattern)
+
+			for page_num in ref_outs.keys():
+				page = Page()
+				run.get('pages').append(page)
+
+				page.set('hash', hash)
+				page.set('version', regression.get_reference_version())
+				page.set('document_name', dname)
+				page.set('page_num', page_num)
+				page.set('ext', 'png')
+				page.set('path', ref_outs[page_num])
+				with open(ref_outs[page_num], 'r') as mfile:
+					page.set('binary', Binary(mfile.read()))
+					page.set('path', ref_outs[page_num])
+
+			metrics_ref_map = regression.diff_metrics_ref_map()
+			assert ref_outs[page_num] in metrics_ref_map
+
+			metrics = metrics_ref_map[ref_outs[page_num]]
+			run.get('diffs')[regression.get_target_version()] = metrics
+
+			metrics.set('version', regression.get_target_version())
+			metrics.set('hash', hash)
+			metrics.set('document_name', dname)
+
+			for page_num in diff_outs.keys():
+				page = Page()
+				metrics.get('pages').append(page)
+
+				page.set('hash', hash)
+				page.set('version', regression.get_target_version())
+				page.set('document_name', dname)
+				page.set('page_num', page_num)
+				page.set('ext', 'png')
+				page.set('path', diff_outs[page_num])
+				with open(diff_outs[page_num], 'r') as mfile:
+					page.set('binary', Binary(mfile.read()))
+					page.set('path', diff_outs[page_num])
+
 		else:
 			for file in regression.ref_out_file_paths():
 				ret = re.search(pattern, file)
@@ -317,6 +372,7 @@ class Page(Base):
 		obj['hash'] = self._impl['hash']
 		obj['document_name'] = self._impl['document_name']
 		obj['page_num'] = self._impl['page_num']
+		obj['path'] = self._impl['path']
 		#obj['binary'] = self._impl['binary']
 		obj['ext'] = self._impl['ext']
 

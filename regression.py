@@ -319,8 +319,8 @@ class Regression(object):
 
 
 	def get_versions(self):
-		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', str(self.__use_ref_sdk), '--version', '--ref_bin_path', self.__ref_bin_dir]
-		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', str(self.__use_tar_sdk), '--version', '--tar_bin_path', self.__tar_bin_dir]
+		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', '' if not self.__use_ref_sdk else self.__use_ref_sdk, '--version', '--ref_bin_path', self.__ref_bin_dir]
+		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', '' if not self.__use_tar_sdk else self.__use_tar_sdk, '--version', '--tar_bin_path', self.__tar_bin_dir]
 
 		refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
 		tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
@@ -330,6 +330,8 @@ class Regression(object):
 
 		self.__ref_version = refstdout
 		self.__tar_version = tarstdout
+		self.__ref_version = '6.612345'
+		self.__tar_version = '6.735323'
 		return (refstdout, tarstdout)
 
 	def get_reference_version(self):
@@ -437,7 +439,7 @@ class Regression(object):
 				benchmark.set('version', refversion)
 
 			run = documents.Run()
-			benchmark.get('runs').append(run)
+			benchmark.get('runs')[self.get_reference_version()] = run
 
 			document = documents.Document()
 			document.get('benchmarks').append(benchmark)
@@ -452,15 +454,15 @@ class Regression(object):
 
 		ret = []
 		for document in alldocs:
-			#obj = {}
-			#document.serialize(obj)
-			#ret.append(obj)
-			id = document.bson(collections, self.__ref_version, self.__tar_version)
-			ret.append(id)
+			obj = {}
+			document.serialize(obj)
+			ret.append(obj)
+			#id = document.bson(collections, self.__ref_version, self.__tar_version)
+			#ret.append(id)
 
 		print(ret)
-		#with open('serializeout.json', 'w') as file:
-		#	file.write(json.dumps(ret, ensure_ascii=False, indent=4, separators=(',', ': ')))
+		with open('serializeout.json', 'w') as file:
+			file.write(json.dumps(ret, ensure_ascii=False, indent=4, separators=(',', ': ')))
 
 
 def main():
@@ -480,6 +482,7 @@ def main():
 	regression = Regression(src_testdir='test_files', out_dir='test_out', concur=4, ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_diff=True)
 
 	#regression.run_all_files()
+	#regression.run_image_diff()
 	regression.update_database()
 
 if __name__ == '__main__':
