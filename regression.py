@@ -77,8 +77,8 @@ class Regression(object):
 		self.__ref_bin_dir = ref_bin_dir if ref_bin_dir else ''
 		self.__use_tar_sdk = tar_use_sdk
 		self.__tar_bin_dir = tar_bin_dir if tar_bin_dir else ''
-		assert self.__use_ref_sdk and not self.__ref_bin_dir or self.__ref_bin_dir and not self.__use_ref_sdk
-		assert self.__use_tar_sdk and not self.__tar_bin_dir or self.__tar_bin_dir and not self.__use_tar_sdk
+		#assert self.__use_ref_sdk and not self.__ref_bin_dir or self.__ref_bin_dir and not self.__use_ref_sdk
+		#assert self.__use_tar_sdk and not self.__tar_bin_dir or self.__tar_bin_dir and not self.__use_tar_sdk
 
 		self.__documents = []
 		self.__benchmarks = []
@@ -263,17 +263,19 @@ class Regression(object):
 					if os.path.splitext(file)[1] in ext_list:
 						if not self.__out_dir:
 							relpath = os.path.relpath(root, self.__src_testdir)
-							path = os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath)
-							if not os.path.exists(path):
-								os.makedirs(path)
-							else:
-								self.__delete_all(path)
+							if self.__ref_out:
+								path = os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath)
+								if not os.path.exists(path):
+									os.makedirs(path)
+								else:
+									self.__delete_all(path)
 
-							path = os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath)
-							if not os.path.exists(path):
-								os.makedirs(path)
-							else:
-								self.__delete_all(path)
+							if self.__tar_out:
+								path = os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath)
+								if not os.path.exists(path):
+									os.makedirs(path)
+								else:
+									self.__delete_all(path)
 
 						print(os.path.join(root, file) + ' added to queue')
 						self.__src_file_paths.append(os.path.join(root, file))
@@ -305,10 +307,13 @@ class Regression(object):
 				   '--tar_bin_path', self.__tar_bin_dir,
 				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
 
-		refregression = subprocess.Popen(refargs)
-		tarregression = subprocess.Popen(tarargs)
-		refregression.communicate()
-		tarregression.communicate()
+		if (self.__ref_out or self.__out_dir) and (self.__use_ref_sdk or self.__ref_bin_dir):
+			refregression = subprocess.Popen(refargs)
+			refregression.communicate()
+
+		if (self.__tar_out or self.__out_dir) and (self.__use_tar_sdk or self.__tar_bin_dir) :
+			tarregression = subprocess.Popen(tarargs)
+			tarregression.communicate()
 
 		self.__populate_file_paths()
 
@@ -322,11 +327,17 @@ class Regression(object):
 		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', '' if not self.__use_ref_sdk else self.__use_ref_sdk, '--version', '--ref_bin_path', self.__ref_bin_dir]
 		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', '' if not self.__use_tar_sdk else self.__use_tar_sdk, '--version', '--tar_bin_path', self.__tar_bin_dir]
 
-		refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
-		tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
+		refversion = ''
+		tarversion = ''
+		refstdout = ''
+		tarstdout = ''
+		if self.__use_ref_sdk or self.__ref_bin_dir:
+			refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
+			refstdout = refversion.communicate()[0]
 
-		refstdout = refversion.communicate()[0]
-		tarstdout = tarversion.communicate()[0]
+		if self.__use_tar_sdk or self.__tar_bin_dir:
+			tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
+			tarstdout = tarversion.communicate()[0]
 
 		self.__ref_version = refstdout
 		self.__tar_version = tarstdout
@@ -357,6 +368,8 @@ class Regression(object):
 			assert False
 
 	def __get_files_recursively(self, dir, exts, ret):
+		if not dir:
+			return
 		for root, dirnames, filenames in os.walk(dir):
 			for filename in filenames:
 				if os.path.splitext(filename)[1] in exts:
@@ -468,7 +481,7 @@ class Regression(object):
 def main():
 	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
 
-	# #regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
+	# regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
 	# 						ref_outdir='D:/Regression/Ref',
 	# 						tar_outdir='D:/Regression/Target',
 	# 						diff_outdir='D:/Regression/Diff',
@@ -477,13 +490,23 @@ def main():
 	# 						tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
 	# 						do_pdf=False,
 	# 						do_docx=True,
-	# 						do_pptx=True)
+	# 						do_pptx=True,
+	# 						do_diff=False)
 
-	regression = Regression(src_testdir='test_files', out_dir='test_out', concur=4, ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_diff=True)
+	regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
+							tar_outdir='D:/Regression/Target',
+							concur=8,
+							tar_bin_dir='D:/Work/Github/Regression/tar_bin/docpub.exe',
+							do_pdf=False,
+							do_docx=True,
+							do_pptx=True,
+							do_diff=False)
 
-	#regression.run_all_files()
+	# regression = Regression(src_testdir='test_files', out_dir='test_out', concur=4, ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_diff=True)
+
+	regression.run_all_files()
 	#regression.run_image_diff()
-	regression.update_database()
+	#regression.update_database()
 
 if __name__ == '__main__':
 	main()

@@ -22,6 +22,7 @@ class Regression(object):
 				 tar_bin_dir=None):
 
 		self.__lib = None
+		self.__bin_path = None
 		if version:
 			if ref_use_sdk:
 				self.__ImportRefLib()
@@ -103,7 +104,9 @@ class Regression(object):
 		if self.__lib:
 			return self.__lib.PDFNet.get_versions()
 		else:
-			assert self.__bin_path
+			#assert self.__bin_path
+			if not self.__bin_path:
+				return ''
 			if os.path.exists(self.__bin_path):
 				commands = [self.__bin_path, '-v']
 				process = subprocess.Popen(commands, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
