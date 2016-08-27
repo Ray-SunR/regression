@@ -189,7 +189,7 @@ class Regression(object):
 				if os.path.splitext(filepath)[1] in ['.docx', '.pptx']:
 					commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
 				else:
-					commands = [fullbinpath, '-f', 'pdf', filepath, '-o', output_dir]
+					commands = [fullbinpath, '-f', 'pdf', '--toimages=true', filepath, '-o', output_dir]
 			else:
 				commands = [fullbinpath, filepath, '-o', output_dir]
 

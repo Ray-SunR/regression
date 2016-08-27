@@ -355,7 +355,7 @@ class Regression(object):
 		if self.__use_ref_sdk:
 			return 'sdk'
 		elif self.__ref_bin_dir:
-			return os.path.split(self.__ref_bin_dir)[1]
+			return os.path.splitext(os.path.split(self.__ref_bin_dir)[1])[0]
 		else:
 			assert False
 
@@ -363,7 +363,7 @@ class Regression(object):
 		if self.__use_tar_sdk:
 			return 'sdk'
 		elif self.__tar_bin_dir:
-			return os.path.split(self.__tar_bin_dir)[1]
+			return os.path.splitext(os.path.split(self.__tar_bin_dir)[1])[0]
 		else:
 			assert False
 
@@ -388,7 +388,7 @@ class Regression(object):
 
 		db_documents = db.documents
 		db_benchmarks = db.benchmarks
-		db_runs = db.runs
+		db_references = db.references
 		db_pages = db.pages
 		db_differences = db.differences
 		db_difference_metrics = db.difference_metrics
@@ -397,7 +397,7 @@ class Regression(object):
 			'benchmarks': db_benchmarks,
 			'pages': db_pages,
 			'differences': db_differences,
-			'runs': db_runs,
+			'references': db_references,
 			'difference_metrics': db_difference_metrics
 		}
 
@@ -451,18 +451,18 @@ class Regression(object):
 				benchmark.set('type', self.get_reference_run_type())
 				benchmark.set('version', refversion)
 
-			run = documents.Run()
-			benchmark.get('runs')[self.get_reference_version()] = run
+			ref = documents.Reference()
+			benchmark.get('references')[self.get_reference_version()] = ref
 
 			document = documents.Document()
-			document.get('benchmarks').append(benchmark)
+			document.get('benchmarks')[self.get_reference_version()] = benchmark
 			document.set('hash', hash)
 			document.populate(path)
 
-			run.populate(document)
-			run.set('version', refversion)
+			ref.populate(document)
+			ref.set('version', refversion)
 
-			benchmark.populate(self, document, run)
+			benchmark.populate(self, document, ref)
 			alldocs.append(document)
 
 		ret = []
@@ -481,32 +481,27 @@ class Regression(object):
 def main():
 	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
 
+	regression = Regression(src_testdir='D:/PDFTest/Annotations',
+							out_dir='D:/Regression/out',
+							concur=4,
+							ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe',
+							tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
+							do_pdf=True)
+
 	# regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
-	# 						ref_outdir='D:/Regression/Ref',
 	# 						tar_outdir='D:/Regression/Target',
-	# 						diff_outdir='D:/Regression/Diff',
-	# 						concur=4,
-	# 						ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe',
-	# 						tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
+	# 						concur=8,
+	# 						tar_bin_dir='D:/Work/Github/Regression/tar_bin/docpub.exe',
 	# 						do_pdf=False,
 	# 						do_docx=True,
 	# 						do_pptx=True,
 	# 						do_diff=False)
 
-	regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
-							tar_outdir='D:/Regression/Target',
-							concur=8,
-							tar_bin_dir='D:/Work/Github/Regression/tar_bin/docpub.exe',
-							do_pdf=False,
-							do_docx=True,
-							do_pptx=True,
-							do_diff=False)
-
 	# regression = Regression(src_testdir='test_files', out_dir='test_out', concur=4, ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_diff=True)
 
-	regression.run_all_files()
+	#regression.run_all_files()
 	#regression.run_image_diff()
-	#regression.update_database()
+	regression.update_database()
 
 if __name__ == '__main__':
 	main()
