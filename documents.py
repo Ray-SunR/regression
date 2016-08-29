@@ -53,7 +53,7 @@ class Base(object):
 			else:
 				assert False
 
-	def bson(self, collections):
+	def bson(self, collections, refversion, tarversion):
 		pass
 
 	def __dummy_copy(self):
@@ -68,27 +68,54 @@ class Document(Base):
 			'document_name': '', # name for the document
 			'ext': '', # extension
 			'path': '', # path for the document
-			'benchmarks': {} # map between ref version to Benchmarks)
+			'references': {} # map between ref version to Benchmarks)
 		}
 
 	def bson(self, collections, refversion, tarversion):
-		benchmark_ids = []
-		for benchmark in self.get('benchmarks'):
-			found_benchmark = collections['benchmarks'].find_one({'hash': self.get('hash'), 'version': refversion})
-			if not found_benchmark:
-				assert isinstance(benchmark, Base)
-				id = benchmark.bson(collections)
-				benchmark_ids.append(id)
 
-		obj = self.__dummy_copy() 
-		obj['benchmarks'] = benchmark_ids
-		found = collections['documents'].find_one({'hash': self.get('hash')})
-		if found:
-			collections['documents'].update_one({'hash': self.get('hash')}, {'$push': {'benchmarks': { '$each' : benchmark_ids}}})
-			return found['_id']
+		if self.get('document_name') == "YuchenLiu's Driver licence.pdf":
+			tmp = 1
+		document_found = collections['documents'].find_one({'hash': self.get('hash')})
+		if document_found:
+			for key in self.get('references').keys():
+				reference = self.get('references')[key]
+				key = key.replace('.', '_')
+				if key in document_found['references'].keys():
+					# This reference already exists
+					ref_found = collections['references'].find_one({'hash': reference.get('hash'), 'version': reference.get('version')})
+					assert (ref_found)
+
+					if tarversion in ref_found['diffs'].keys() and False:
+						# Don't need to update
+						pass
+					else:
+						# Create a new diff in the db and append it to references obj
+						diff = reference.get('diffs')[tarversion]
+						diff_id = diff.bson(collections, refversion, tarversion)
+
+						tarversion = tarversion.replace('.', '_')
+						new_key = 'diffs.' + tarversion
+						collections['references'].update_one({'hash': reference.get('hash'), 'version': reference.get('version')}, {'$set': {new_key: diff_id}})
+				else:
+					# need to generate a new reference
+					ref_id = reference.bson(collections, refversion, tarversion)
+					new_key = 'references.' + refversion
+					collections['documents'].update_one({'hash': self.get('hash')}, {'$set': {new_key: ref_id}})
+				return document_found['_id']
 		else:
-			inserted = collections['documents'].insert_one(obj)
+			# this is a new document
+			ref_ids = {}
+			dbobj = self.__dummy_copy()
+			dbobj['references'] = ref_ids
+			for key in self.get('references').keys():
+				reference = self.get('references')[key]
+				ref_id = reference.bson(collections, refversion, tarversion)
+				refversion = refversion.replace('.', '_')
+				ref_ids[refversion] = ref_id
+
+			inserted = collections['documents'].insert_one(dbobj)
 			return inserted.inserted_id
+
 
 	def populate(self, d_path):
 		filename,ext = os.path.splitext(d_path)
@@ -126,73 +153,37 @@ class Difference(Base):
 			'metrics':{} # a map between page number and diff metrics
 		}
 
-# A run is a container for storing reference runs and its diffs of other revisions
-class Reference(Base):
-	'''
-	Uniquely identified by version and hash
-	'''
-	def __init__(self):
-		self._impl = {
-			'document_name':'', # document name
-			'version':'', #ref version
-			'hash': '', # document hash
-			'pages': {}, # a map between page number and page
-			'diffs': {} # a map between target version and Difference
-			#  list of (diff_metrics) sorted by page number
-		}
-
-	def populate(self, document):
-		self.set('document_name', document.get('document_name'))
-		self.set('hash', document.get('hash'))
-
 	def bson(self, collections, refversion, tarversion):
-		page_ids = {}
-		diff_ids = {}
-		for page_num in self.get('pages').keys():
-			assert isinstance(self.get('pages')[page_num], Base)
-			id = self.get('pages')[page_num].bson(collections)
-			page_ids.append(id)
+		# update its pages and metrics
+		pages_obj = {}
+		metrics_obj = {}
+		dbobj =  self.__dummy_copy()
+		dbobj['pages'] = pages_obj
+		dbobj['metrics'] = metrics_obj
+		for key in self.get('pages').keys():
+			page = self.get('pages')[key]
+			page_id = page.bson(collections, refversion, tarversion)
+			pages_obj[str(key)] = page_id
 
-		for key in self.get('diffs').keys():
-			diffs = self.get('diffs')[key]
-			for diff in diffs:
-				id = diff.bson(collections, refversion, tarversion)
-				diff_ids.append(id)
-		for version in self.get('diffs').keys():
-			diffs = self.get('diffs')[version]
-			ids = []
-			for diff in diffs:
-				ids.append(diff.bson(collections))
-			diff_ids[version] = ids
+		for key in self.get('metrics').keys():
+			metric = self.get('metrics')[key]
+			metric_id = metric.bson(collections, refversion, tarversion)
+			metrics_obj[str(key)] = metric_id
 
-		obj = self.__dummy_copy()
-		
-		obj['pages'] = page_ids
-		obj['diffs'][tarversion] = diff_ids
-		
-		found = collections['references'].find_one({'version': self.get('version'), 'document_name': self.get('document_name'), 'hash': self.get('hash')})
-		if found:
-			key = 'diffs.' + tarversion
-			# if found, only add the diffs. Don't have to update pages
-			collections['references'].update_one({'_id': found._id}, {'$set':{key: diff_ids}})
-			return  found['_id']
-			# Only append diffs
-			key = 'diffs.' + tarversion
-			collections['references'].update_one({'_id': found._id}, {'$set': {key: ids}})
-		else:
-			inserted = collections['references'].insert_one(obj)
-			return inserted.inserted_id
-		
+		collections['differences'].update_one({'hash': self.get('hash'), 'version': self.get('version')}, {'$set': dbobj}, upsert=True)
+
+		return collections['differences'].find_one({'hash': self.get('hash'), 'version': self.get('version')})['_id']
+
 	def __dummy_copy(self):
-		run = Reference()
-		ret = run.obj()
-		ret['document_name'] = self.get('document_name')
-		ret['version'] = self.get('version')
-		ret['hash'] = self.get('hash')
-		return ret
+		diff = Difference()
+		diff_obj = diff.obj()
+		diff_obj['document_name'] = self.get('document_name')
+		diff_obj['version'] = self.get('version')
+		diff_obj['hash'] = self.get('hash')
+		return diff_obj
 
 # A benchmark is a container for reference runs
-class Benchmark(Base):
+class Reference(Base):
 	'''
 	Uniquely identified by version and hash
 	'''
@@ -201,31 +192,47 @@ class Benchmark(Base):
 			'version': '', # PK
 			'type': '', # sdk or pdf2image or docpub etc...
 			'hash': '', # pk, document hash
-			'references': {} # map between reference version and reference run
+			'pages': {}, # a map between page number and page
+			'diffs': {} # a map between target version and Difference
 		}
 
 	def bson(self, collections, refversion, tarversion):
-		run_ids = []
-		for ref in self.get('references'):
-			found_run = collections['references'].find_one({'version': ref.get('version'), 'hash': ref.get('hash')})
-			if not found_run:
-				assert isinstance(found_run, Base)
-				runid = ref.bson(collections)
-				run_ids.append(runid)
+		found_ref = collections['references'].find_one({'hash': self.get('hash'), 'version': self.get('version')})
 
-		found = collections['benchmarks'].find_one({'version': self.get('version'), 'hash': self.get('hash')})
-		if found:
-			# this is a new run as benchmark, append that run to represent the new benchmark
-			collections['benchmarks'].update_one({'_id': found['_id']}, {'$push': {'references': {'$each': run_ids}}})
-			return found['_id']
+		if found_ref:
+			# Only update diffs
+			for key in self.get('diffs').keys():
+				diff = self.get('diffs')[key]
+				diff_id = diff.bson(collections, refversion, tarversion)
+				tarversion = tarversion.replace('.', '_')
+				new_key = 'diffs.' + tarversion
+				collections['references'].update_one({'hash': self.get('hash'), 'version': self.get('version')}, {'$set':{new_key: diff_id}})
+
+			return found_ref['_id']
 		else:
-			obj = self.__dummy_copy()
-			obj['references'] = run_ids
-			inserted = collections['benchmarks'].insert_one(obj)
-			return inserted.inserted_id
-			
+			# Create new reference
+			reference_dbobj = self.__dummy_copy()
+			pages_obj = {}
+			diffs_obj = {}
+			reference_dbobj['pages'] = pages_obj
+			reference_dbobj['diffs'] = diffs_obj
+			for key in self.get('pages').keys():
+				page = self.get('pages')[key]
+				page_id = page.bson(collections, refversion, tarversion)
+				pages_obj[str(key)] = page_id
+
+			for key in self.get('diffs').keys():
+				diff = self.get('diffs')[key]
+				diff_id = diff.bson(collections, refversion, tarversion)
+				key = key.replace('.', '_')
+				diffs_obj[key] = diff_id
+
+			inserted_ret = collections['references'].insert_one(reference_dbobj)
+			return inserted_ret.inserted_id
+
+
 	def __dummy_copy(self):
-		bm = Benchmark()
+		bm = Reference()
 		ret = bm.obj()
 		ret['version'] = self.get('version')
 		ret['type'] = self.get('type')
@@ -242,7 +249,7 @@ class Benchmark(Base):
 			result[page_num] = os.path.join(dir, file)
 		return result
 
-	def populate(self, regression, document, ref):
+	def populate(self, regression, document):
 		# remember: the output generated from binary (pdf2image) for single page pdf will not include the page number
 		pattern = os.path.splitext(document.get('document_name'))[0] + '(?:\.png|_(\d+).png)'
 
@@ -253,9 +260,9 @@ class Benchmark(Base):
 		if regression.out_dir():
 			# find the image outputs based on hash
 			out_dir = regression.out_dir()
-			ref_dir = os.path.join(out_dir, hash, 'ref')
-			tar_dir = os.path.join(out_dir, hash, 'tar')
-			diff_dir = os.path.join(out_dir, hash, 'diff')
+			ref_dir = os.path.join(out_dir, hash, regression.ref_dir_name())
+			tar_dir = os.path.join(out_dir, hash, regression.tar_dir_name())
+			diff_dir = os.path.join(out_dir, hash, regression.diff_dir_name())
 
 			ref_outs = self.__filter_files(ref_dir, pattern)
 			tar_outs = self.__filter_files(tar_dir, pattern)
@@ -263,14 +270,14 @@ class Benchmark(Base):
 
 			for page_num in ref_outs.keys():
 				page = Page()
-				ref.get('pages')[page_num] = page
+				self.get('pages')[page_num] = page
 
 				page.set('hash', hash)
 				page.set('version', regression.get_reference_version())
 				page.set('document_name', dname)
 				page.set('page_num', page_num)
 				page.set('ext', 'png')
-				page.set('path', ref_outs[page_num])
+				page.set('path', os.path.abspath(ref_outs[page_num]))
 				with open(ref_outs[page_num], 'r') as mfile:
 					page.set('binary', Binary(mfile.read()))
 
@@ -279,7 +286,7 @@ class Benchmark(Base):
 			difference.set('version', regression.get_target_version())
 			difference.set('hash', hash)
 			difference.set('document_name', dname)
-			ref.get('diffs')[regression.get_target_version()] = difference
+			self.get('diffs')[regression.get_target_version()] = difference
 
 			for page_num in tar_outs.keys():
 				page = Page()
@@ -290,7 +297,7 @@ class Benchmark(Base):
 				page.set('document_name', dname)
 				page.set('page_num', page_num)
 				page.set('ext', 'png')
-				page.set('path', diff_outs[page_num])
+				page.set('path', os.path.abspath(diff_outs[page_num]))
 				with open(diff_outs[page_num], 'r') as mfile:
 					page.set('binary', Binary(mfile.read()))
 
@@ -310,7 +317,7 @@ class Benchmark(Base):
 
 				page_num = int(ret.group(1)) if ret.group(1) else 1
 				page = Page()
-				ref.get('pages').append(page)
+				self.get('pages').append(page)
 
 				page.set('hash', hash)
 				page.set('version', self.get('version'))
@@ -329,11 +336,11 @@ class Benchmark(Base):
 				metric.set('hash', hash)
 				metric.set('document_name', dname)
 
-				if regression.get_target_version() in ref.get('diffs').keys():
-					metric = ref.get('diffs')[regression.get_target_version()][0]
+				if regression.get_target_version() in self.get('diffs').keys():
+					metric = self.get('diffs')[regression.get_target_version()][0]
 				else:
-					ref.get('diffs')[regression.get_target_version()] = []
-					ref.get('diffs')[regression.get_target_version()].append(metric)
+					self.get('diffs')[regression.get_target_version()] = []
+					self.get('diffs')[regression.get_target_version()].append(metric)
 
 				diff_page = Page()
 				metric.get('pages').append(diff_page)
@@ -348,7 +355,7 @@ class Benchmark(Base):
 				diff_page_path = regression.ref_out_diff_map()[file]
 				with open(diff_page_path, 'r') as mfile:
 					diff_page.set('binary', Binary(mfile.read()))
-					diff_page.set('path', diff_page_path)
+					diff_page.set('path', os.path.abspath(diff_page_path))
 
 
 class Page(Base):
@@ -364,16 +371,11 @@ class Page(Base):
 		}
 
 	def bson(self, collections, refversion, tarversion):
-		found = collections['pages'].find_one({'hash': self.get('hash'), 'page_num': self.get('page_num'), 'version': self.get('version')})
-		if found:
-			collections['pages'].update_one({'hash': self.get('hash'), 'page_num': self.get('page_num'), 'version': self.get('version')}, {'$set': {'binary': Binary(self.get('binary'))}})
-			return found['_id']
-		else:
-			obj = self.__dummy_copy()
-			obj['binary'] = Binary(obj['binary'])
-			inserted = collections['pages'].insert_one(obj)
-			return inserted.inserted_id
-			
+		dbobj = self.__dummy_copy()
+		collections['pages'].update_one({'hash': self.get('hash'), 'page_num': self.get('page_num'), 'version': self.get('version')}, {'$set': dbobj}, upsert=True)
+
+		return collections['pages'].find_one({'hash': self.get('hash'), 'page_num': self.get('page_num'), 'version': self.get('version')})['_id']
+
 	def __dummy_copy(self):
 		page = Page()
 		ret = page.obj()
@@ -414,27 +416,18 @@ class DifferenceMetric(Base):
 			self.set('document_name', obj['document_name'])
 
 	def bson(self, collections, refversion, tarversion):
-		page = self.get('page')
-		ids = []
-		if isinstance(page, Base):
-			ids.append(page.bson(collections))
+		dbobj = self.__dummy_copy()
+		collections['difference_metrics'].update_one({'hash': self.get('hash'), 'ref_version': self.get('ref_version'), 'tar_version': self.get('tar_version')}, {'$set': dbobj}, upsert=True)
 
-		found = collections['difference_metrics'].find_one({'version': self.get('version'), 'hash': self.get('hash')})
-		obj = self.__dummy_copy()
-		obj['page'] = ids
-		if found:
-			collections['difference_metrics'].update_one({'version': self.get('version'), 'hash': self.get('hash')}, {'page': ids})
-			return found['_id']
-		else:
-			inserted = collections['difference_metrics'].insert_one(obj)
-			return inserted.inserted_id
-			
+		return collections['difference_metrics'].find_one({'hash': self.get('hash'), 'ref_version': self.get('ref_version'), 'tar_version': self.get('tar_version')})['_id']
+
 	def __dummy_copy(self):
 		diff = DifferenceMetric()
 		ret = diff.obj()
 		ret['diff_percentage'] = self.get('diff_percentage')
 		ret['hash'] = self.get('hash')
-		ret['version'] = self.get('version')
+		ret['ref_version'] = self.get('ref_version')
+		ret['tar_version'] = self.get('tar_version')
 		ret['document_name'] = self.get('document_name')
 		return ret
 

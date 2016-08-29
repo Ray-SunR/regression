@@ -19,7 +19,8 @@ class Regression(object):
 				 ref_use_sdk=False,
 				 ref_bin_dir=None,
 				 tar_use_sdk=False,
-				 tar_bin_dir=None):
+				 tar_bin_dir=None,
+				 ref_version_name=None):
 
 		self.__lib = None
 		self.__bin_path = None
@@ -68,6 +69,11 @@ class Regression(object):
 		if ref_bin_dir:
 			self.__bin_path = ref_bin_dir
 			self.__ref_or_tar = 'ref'
+			assert ref_version_name
+
+			# This member is used to track whether we should run for this task because
+			# references should only be generated once
+			self.__ref_version_name = ref_version_name
 		elif tar_bin_dir:
 			self.__bin_path = tar_bin_dir
 			self.__ref_or_tar = 'tar'
@@ -130,6 +136,14 @@ class Regression(object):
 			except Exception as e:
 				print(e)
 
+	def __make_dirs(self, path):
+		try:
+			os.makedirs(path)
+		except OSError, e:
+			if e.errno != 17:
+				raise
+			pass
+
 	def __RunImpl(self, filepath):
 		hash = self.__hash(filepath)
 		if self.__lib:
@@ -144,7 +158,7 @@ class Regression(object):
 				if os.path.exists(output_path):
 					self.__delete_all(output_path)
 				else:
-					os.makedirs(output_path)
+					self.__make_dirs(output_path)
 
 			try:
 				wordoc = lib.PDFDoc(filepath)
@@ -170,7 +184,10 @@ class Regression(object):
 
 			output_dir = ''
 			if self.__centrailize_mode:
-				output_dir = os.path.join(self.__output_dir, hash, self.__ref_or_tar)
+				if self.__ref_or_tar == 'ref':
+					output_dir = os.path.join(self.__output_dir, hash, self.__ref_or_tar, self.__ref_version_name)
+				else:
+					output_dir = os.path.join(self.__output_dir, hash, self.__ref_or_tar)
 			else:
 				prefix = os.path.commonprefix([filepath, self.__src_testdir])
 				tail = os.path.relpath(os.path.dirname(filepath), prefix)
@@ -179,10 +196,13 @@ class Regression(object):
 				output_dir = os.path.normpath(output_dir)
 
 			if self.__centrailize_mode:
-				if os.path.exists(output_dir):
+				# Only delete target runs
+				if os.path.exists(output_dir) and self.__ref_or_tar != 'ref':
 					self.__delete_all(output_dir)
+				elif os.path.exists(output_dir) and self.__ref_or_tar == 'ref':
+					return
 				else:
-					os.makedirs(output_dir)
+					self.__make_dirs(output_dir)
 
 			commands = ''
 			if os.path.splitext(os.path.split(fullbinpath)[1])[0] == 'docpub':
@@ -258,6 +278,11 @@ def main():
 						"--tar_bin_path",
 						type=str,
 						help="Specify the binary executable path for reference")
+	parser.add_argument("-rvname",
+						"--ref_version_name",
+						type=str,
+						default='',
+						help="Specify the reference output version_name")
 	args = parser.parse_args()
 
 	files = ''
@@ -274,7 +299,8 @@ def main():
 							ref_bin_dir=args.ref_bin_path,
 							tar_use_sdk=args.use_tar_sdk,
 							tar_bin_dir=args.tar_bin_path,
-							out_dir=args.out_dir)
+							out_dir=args.out_dir,
+							ref_version_name=args.ref_version_name)
 	if not args.version:
 		regression.Run()
 
