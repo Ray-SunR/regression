@@ -328,7 +328,7 @@ class Regression(object):
 			self.__cache()
 
 	def ref_dir_name(self):
-		return 'ref' if self.__out_dir else self.__ref_out
+		return os.path.join('ref', self.__ref_version) if self.__out_dir else self.__ref_out
 
 	def tar_dir_name(self):
 		return 'tar' if self.__out_dir else self.__tar_out
@@ -530,11 +530,11 @@ def main():
 
 	import time
 	start_time = time.time()
-	regression = Regression(src_testdir='test_files', out_dir='test_out', concur=8,
+	regression = Regression(src_testdir='test_files/sub/sub', out_dir='test_out', concur=8,
 tar_bin_dir='ref_bin/pdf2image' ,ref_bin_dir='tar_bin/6.6.0/pdf2image', do_diff=True)
 
-	#regression.run_all_files()
-	#regression.run_image_diff()
+	regression.run_all_files()
+	regression.run_image_diff()
 	regression.update_database()
 	print('Elapsed: ' + str(time.time() - start_time))
 
