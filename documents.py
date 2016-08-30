@@ -27,6 +27,8 @@ class Base(object):
 				bson[key] = self._impl[key]
 			elif isinstance(self._impl[key], float):
 				bson[key] = self._impl[key]
+			elif isinstance(self._impl[key], int):
+				bson[key] = self._impl[key]
 			elif isinstance(self._impl[key], Base):
 				obj = {}
 				self._impl[key].serialize(obj)
@@ -34,12 +36,15 @@ class Base(object):
 			elif isinstance(self._impl[key], list):
 				lobj = []
 				for item in self._impl[key]:
-					obj = {}
-					if isinstance(item, Base):
-						item.serialize(obj)
+					if isinstance(item, str):
+						lobj.append(item)
 					else:
-						obj = self._impl[key]
-					lobj.append(obj)
+						obj = {}
+						if isinstance(item, Base):
+							item.serialize(obj)
+						else:
+							obj = self._impl[key]
+						lobj.append(obj)
 				bson[key] = lobj
 			elif isinstance(self._impl[key], dict):
 				obj = {}
@@ -68,7 +73,8 @@ class Document(Base):
 			'document_name': '', # name for the document
 			'ext': '', # extension
 			'path': '', # path for the document
-			'references': {} # map between ref version to Benchmarks)
+			'references': {}, # map between ref version to Benchmarks)
+			'tags': [] # tags to identify the document. e.g If a document exists in PDFTest/Annotations, then it will have Annotations tag
 		}
 
 	def bson(self, collections, refversion, tarversion):
@@ -126,7 +132,7 @@ class Document(Base):
 			try:
 				with open(d_path) as file:
 					sha1 = hashlib.sha1(file.read())
-					self.set('hash', sha1.hexdigest())
+					self.set('hash', sha1.hexdigest() + '_' + os.path.basename(d_path))
 			except Exception as e:
 				print(e)
 
@@ -137,6 +143,7 @@ class Document(Base):
 		ret['document_name'] = self.get('document_name')
 		ret['ext'] = self.get('ext')
 		ret['path'] = self.get('path')
+		ret['tags'] = self.get('tags')
 		return ret
 
 class Difference(Base):
@@ -150,6 +157,7 @@ class Difference(Base):
 			'version':'',
 			'hash':'',
 			'pages':{}, # this entry will not be stored into the database
+			'num_page_diffs': '', # Used to track the number of page differences between ref version output and tar version output
 			'metrics':{} # a map between page number and diff metrics
 		}
 
@@ -180,6 +188,7 @@ class Difference(Base):
 		diff_obj['document_name'] = self.get('document_name')
 		diff_obj['version'] = self.get('version')
 		diff_obj['hash'] = self.get('hash')
+		diff_obj['num_page_diffs'] = self.get('num_page_diffs')
 		return diff_obj
 
 # A benchmark is a container for reference runs
@@ -286,6 +295,7 @@ class Reference(Base):
 			difference.set('version', regression.get_target_version())
 			difference.set('hash', hash)
 			difference.set('document_name', dname)
+			difference.set('num_page_diffs', len(ref_outs.keys()) - len(tar_outs.keys()))
 			self.get('diffs')[regression.get_target_version()] = difference
 
 			for page_num in tar_outs.keys():

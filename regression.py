@@ -197,15 +197,18 @@ class Regression(object):
 
 	def __delete_all(self, folder):
 		import os, shutil
-		for the_file in os.listdir(folder):
-			file_path = os.path.join(folder, the_file)
-			try:
-				if os.path.isfile(file_path):
-					os.unlink(file_path)
-				elif os.path.isdir(file_path):
-					shutil.rmtree(file_path)
-			except Exception as e:
-				print(e)
+		try:
+			for the_file in os.listdir(folder):
+				file_path = os.path.join(folder, the_file)
+				try:
+					if os.path.isfile(file_path):
+						os.unlink(file_path)
+					elif os.path.isdir(file_path):
+						shutil.rmtree(file_path)
+				except Exception as e:
+					print(e)
+		except Exception as e:
+			print(e)
 
 	def __cache(self):
 		dict = {}
@@ -229,25 +232,30 @@ class Regression(object):
 
 		if self.__out_dir:
 			for file in self.__src_file_paths:
-				hash = self.__hash(file)
-				ref_image_paths = []
-				tar_image_paths = []
-				self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'ref', self.__ref_version), '.png', ref_image_paths)
-				self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'tar'), '.png', tar_image_paths)
-				ref_image_names = [os.path.split(path)[1] for path in ref_image_paths]
-				tar_image_names = [os.path.split(path)[1] for path in tar_image_paths]
-				for image_path in ref_image_paths:
-					if os.path.split(image_path)[1] in tar_image_names:
-						import time
-						folder_name = self.__ref_version + '-' + self.__tar_version
-						diffpath = os.path.join(self.__out_dir, hash, 'diff', folder_name)
-						if os.path.exists(diffpath):
-							self.__delete_all(diffpath)
+				try:
+					hash = self.__hash(file)
+					if not hash:
+						continue
+					ref_image_paths = []
+					tar_image_paths = []
+					self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'ref', self.__ref_version), '.png', ref_image_paths)
+					self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'tar'), '.png', tar_image_paths)
+					ref_image_names = [os.path.split(path)[1] for path in ref_image_paths]
+					tar_image_names = [os.path.split(path)[1] for path in tar_image_paths]
+					for image_path in ref_image_paths:
+						if os.path.split(image_path)[1] in tar_image_names:
+							import time
+							folder_name = self.__ref_version + '-' + self.__tar_version
+							diffpath = os.path.join(self.__out_dir, hash, 'diff', folder_name)
+							if os.path.exists(diffpath):
+								self.__delete_all(diffpath)
+							else:
+								os.makedirs(diffpath)
+							args.append((image_path, os.path.join(self.__out_dir, hash, 'tar', os.path.split(image_path)[1]), diffpath))
 						else:
-							os.makedirs(diffpath)
-						args.append((image_path, os.path.join(self.__out_dir, hash, 'tar', os.path.split(image_path)[1]), diffpath))
-					else:
-						print('Missing page ' + image_path + ' for doc: ' + file + ' for target revision: ' + self.__tar_version)
+							tl=False
+				except Exception as e:
+					print(e)
 		else:
 			for file in self.__ref_out_paths:
 				tar_file = os.path.join(self.__tar_out, os.path.relpath(file, self.__ref_out))
@@ -260,34 +268,36 @@ class Regression(object):
 		self.__cache()
 
 
-	def get_all_files(self, dir, ext_list):
-		if not self.__src_file_paths:
-			for root, subFolders, files in os.walk(dir):
-				for file in files:
-					if os.path.splitext(file)[1] in ext_list:
-						if not self.__out_dir:
-							relpath = os.path.relpath(root, self.__src_testdir)
-							if self.__ref_out:
-								path = os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath)
-								if not os.path.exists(path):
-									os.makedirs(path)
-								else:
-									self.__delete_all(path)
+	def __get_all_files(self, dir, ext_list):
+		try:
+			if not self.__src_file_paths:
+				for root, subFolders, files in os.walk(dir):
+					for file in files:
+						if os.path.splitext(file)[1].lower() in ext_list:
+							if not self.__out_dir:
+								relpath = os.path.relpath(root, self.__src_testdir)
+								if self.__ref_out:
+									path = os.path.join(self.__ref_out, os.path.basename(self.__src_testdir), relpath)
+									if not os.path.exists(path):
+										os.makedirs(path)
+									else:
+										self.__delete_all(path)
 
-							if self.__tar_out:
-								path = os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath)
-								if not os.path.exists(path):
-									os.makedirs(path)
-								else:
-									self.__delete_all(path)
+								if self.__tar_out:
+									path = os.path.join(self.__tar_out, os.path.basename(self.__src_testdir), relpath)
+									if not os.path.exists(path):
+										os.makedirs(path)
+									else:
+										self.__delete_all(path)
 
-						print(os.path.join(root, file) + ' added to queue')
-						self.__src_file_paths.append(os.path.join(root, file))
-
+							print(os.path.join(root, file) + ' added to queue')
+							self.__src_file_paths.append(os.path.join(root, file))
+		except Exception as e:
+			print(e)
 		return self.__src_file_paths
 
 	def run_all_files(self):
-		allfiles = self.get_all_files(self.__src_testdir, self.__exts)
+		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
 
 		allfiles = '|'.join(map(str, allfiles))
 		with open('allfiles.txt', 'w') as file:
@@ -391,16 +401,23 @@ class Regression(object):
 	def __get_files_recursively(self, dir, exts, ret):
 		if not dir:
 			return
-		for root, dirnames, filenames in os.walk(dir):
-			for filename in filenames:
-				if os.path.splitext(filename)[1] in exts:
-					ret.append(os.path.join(root, filename))
+		try:
+			for root, dirnames, filenames in os.walk(dir):
+				for filename in filenames:
+					if os.path.splitext(filename)[1] in exts:
+						ret.append(os.path.join(root, filename))
+		except Exception as e:
+			print (e)
 
 	def __hash(self, filepath):
 		import hashlib
-		with open(filepath, 'r') as file:
-			sha1 = hashlib.sha1(file.read())
-			return sha1.hexdigest()
+		try:
+			with open(filepath, 'r') as file:
+				sha1 = hashlib.sha1(file.read())
+				# Append file name in order to avoid conflicts
+				return sha1.hexdigest() + '_' + os.path.split(filepath)[1]
+		except Exception as e:
+			print(e)
 
 	def __collections(self):
 		client = pymongo.MongoClient()
@@ -459,6 +476,18 @@ class Regression(object):
 
 		self.__populate_file_paths()
 
+	def __get_document_tags(self, dpath):
+		lst = [dpath, self.__src_testdir]
+		prefix = os.path.commonprefix(lst)
+		relpath = os.path.relpath(dpath, prefix)
+		relpath_nofname = os.path.split(relpath)[0]
+		# using this relpath_nofname to get tags
+		ret = []
+		while relpath_nofname:
+			(relpath_nofname, tag) = os.path.split(relpath_nofname)
+			ret.append(tag)
+		return ret
+
 	def update_database(self):
 		collections = self.__collections()
 		self.__recover_cache()
@@ -470,25 +499,32 @@ class Regression(object):
 
 		alldocs = []
 		for path in self.__src_file_paths:
-			hash = self.__hash(path)
-			benchmark = documents.Reference()
-			found_benchmark = collections['references'].find_one({'version': refversion, 'hash': hash})
-			if found_benchmark:
-				pass
-			else:
-				# brand new
-				benchmark.set('type', self.get_reference_run_type())
+			try:
+				hash = self.__hash(path)
+				if not hash:
+					continue
+				benchmark = documents.Reference()
+				found_benchmark = collections['references'].find_one({'version': refversion, 'hash': hash})
+				if found_benchmark:
+					pass
+				else:
+					# brand new
+					benchmark.set('type', self.get_reference_run_type())
+					benchmark.set('version', refversion)
+
+				tags = self.__get_document_tags(path)
+
+				document = documents.Document()
+				document.get('references')[refversion] = benchmark
+				document.set('hash', hash)
+				document.set('tags', tags)
+				document.populate(path)
+
 				benchmark.set('version', refversion)
-
-
-			document = documents.Document()
-			document.get('references')[refversion] = benchmark
-			document.set('hash', hash)
-			document.populate(path)
-
-			benchmark.set('version', refversion)
-			benchmark.populate(self, document)
-			alldocs.append(document)
+				benchmark.populate(self, document)
+				alldocs.append(document)
+			except Exception as e:
+				print(e)
 
 		serialize_ret = []
 		db_ret = []
@@ -530,11 +566,11 @@ def main():
 
 	import time
 	start_time = time.time()
-	regression = Regression(src_testdir='test_files/sub/sub', out_dir='test_out', concur=8,
-tar_bin_dir='ref_bin/pdf2image' ,ref_bin_dir='tar_bin/6.6.0/pdf2image', do_diff=True)
+	#regression = Regression(src_testdir='test_files/sub/sub', out_dir='test_out', concur=8,tar_bin_dir='ref_bin/pdf2image' ,ref_bin_dir='tar_bin/6.6.0/pdf2image', do_diff=True)
+
+	regression = Regression(src_testdir='D:/PDFTest', out_dir='D:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
 
 	regression.run_all_files()
-	regression.run_image_diff()
 	regression.update_database()
 	print('Elapsed: ' + str(time.time() - start_time))
 

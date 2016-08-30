@@ -120,9 +120,12 @@ class Regression(object):
 
 	def __hash(self, fpath):
 		import hashlib
-		with open(fpath, 'r') as file:
-			sha1 = hashlib.sha1(file.read())
-			return sha1.hexdigest()
+		try:
+			with open(fpath, 'r') as file:
+				sha1 = hashlib.sha1(file.read())
+				return sha1.hexdigest() + '_' + os.path.basename(fpath)
+		except Exception as e:
+			print(e)
 
 	def __delete_all(self, folder):
 		import os, shutil
@@ -140,12 +143,12 @@ class Regression(object):
 		try:
 			os.makedirs(path)
 		except OSError, e:
-			if e.errno != 17:
-				raise
 			pass
 
 	def __RunImpl(self, filepath):
 		hash = self.__hash(filepath)
+		if not hash:
+			return
 		if self.__lib:
 			lib = self.__lib
 			lib.PDFNet.Initialize()#self.__license)
@@ -206,7 +209,7 @@ class Regression(object):
 
 			commands = ''
 			if os.path.splitext(os.path.split(fullbinpath)[1])[0] == 'docpub':
-				if os.path.splitext(filepath)[1] in ['.docx', '.pptx']:
+				if os.path.splitext(filepath)[1].lower() in ['.docx', '.pptx']:
 					commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
 				else:
 					commands = [fullbinpath, '-f', 'pdf', '--toimages=true', filepath, '-o', output_dir]
