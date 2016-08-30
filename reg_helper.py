@@ -1,3 +1,4 @@
+from __future__ import print_function
 __author__ = 'Renchen'
 
 from multiprocessing.dummy import Pool as ThreadPool
@@ -5,6 +6,7 @@ import os.path
 import sys
 import argparse
 import subprocess
+import codecs
 import re
 
 class Regression(object):
@@ -121,7 +123,7 @@ class Regression(object):
 	def __hash(self, fpath):
 		import hashlib
 		try:
-			with open(fpath, 'r') as file:
+			with open(fpath, 'rb') as file:
 				sha1 = hashlib.sha1(file.read())
 				return sha1.hexdigest() + '_' + os.path.basename(fpath)
 		except Exception as e:
@@ -142,7 +144,7 @@ class Regression(object):
 	def __make_dirs(self, path):
 		try:
 			os.makedirs(path)
-		except OSError, e:
+		except Exception as e:
 			pass
 
 	def __RunImpl(self, filepath):
@@ -176,16 +178,15 @@ class Regression(object):
 				while (it.HasNext()):
 					output_file = os.path.join(output_path, basename, tail + "_" + str(pagenum) + ".png")
 					draw.Export(it.Current(), output_file)
-					print output_file
+					print(output_file)
 					it.Next()
 					pagenum += 1
 			except Exception as e:
-				print e
+				print(e)
 		else:
 			assert self.__bin_path
 			fullbinpath = self.__bin_path
 
-			output_dir = ''
 			if self.__centrailize_mode:
 				if self.__ref_or_tar == 'ref':
 					output_dir = os.path.join(self.__output_dir, hash, self.__ref_or_tar, self.__ref_version_name)
@@ -207,7 +208,9 @@ class Regression(object):
 				else:
 					self.__make_dirs(output_dir)
 
-			commands = ''
+			fullbinpath = os.path.abspath(fullbinpath)
+			filepath = os.path.abspath(filepath)
+			output_dir = os.path.abspath(output_dir)
 			if os.path.splitext(os.path.split(fullbinpath)[1])[0] == 'docpub':
 				if os.path.splitext(filepath)[1].lower() in ['.docx', '.pptx']:
 					commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
@@ -215,13 +218,12 @@ class Regression(object):
 					commands = [fullbinpath, '-f', 'pdf', '--toimages=true', filepath, '-o', output_dir]
 			else:
 				commands = [fullbinpath, filepath, '-o', output_dir]
-
 			process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 			if process.returncode:
 				print('An error occurred when converting: ' + filepath)
 
 			stdout = process.communicate()[0]
-			print(stdout)
+			print(stdout.decode('utf-8'))
 			return
 
 	def Run(self):
@@ -289,7 +291,7 @@ def main():
 	args = parser.parse_args()
 
 	files = ''
-	with open('allfiles.txt', 'r') as file:
+	with codecs.open('allfiles.txt', 'r', 'utf-8') as file:
 		files = file.read()
 
 	regression = Regression(ref_output_dir=args.ref_out_dir,
