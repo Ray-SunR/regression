@@ -155,28 +155,32 @@ class Regression(object):
 				output_file = os.path.join(output_path, basename, tail + "_" + str(pagenum) + ".png")
 				draw.Export(it.Current(), output_file)
 				sys.stdout.flush()
-				print output_file
+				print(output_file)
 				it.Next()
 				pagenum += 1
 		except Exception as e:
-			print e
+			print(e)
 
 	def __run_image_diff_impl(self, tuple):
-		args = ['python', 'image_diff.py', '--file1', tuple[0], '--file2', tuple[1], '--output', tuple[2]]
+		args = [sys.executable, 'image_diff.py', '--file1', tuple[0], '--file2', tuple[1], '--output', tuple[2]]
 		print('Running diff for %s and %s' % (tuple[0], tuple[1]))
 		process = subprocess.Popen(args, stdout=subprocess.PIPE)
-		stdout = process.communicate()[0]
+		stdout = process.communicate()[0].decode('utf-8')
 		if stdout:
-			retdict = json.loads(stdout)
-			diff_image_path = retdict['diff_image_path']
-			diff_percentage = retdict['diff_percentage']
-			diff_metrics = documents.DifferenceMetric()
-			diff_metrics.set('diff_percentage', diff_percentage)
+			try:
+				retdict = json.loads(stdout)
+				diff_image_path = retdict['diff_image_path']
+				diff_percentage = retdict['diff_percentage']
+				diff_metrics = documents.DifferenceMetric()
+				diff_metrics.set('diff_percentage', diff_percentage)
 
-			self.__ref_out_diff_paths_map[tuple[0]] = diff_image_path
-			self.__tar_out_diff_paths_map[tuple[1]] = diff_image_path
-			self.__diff_metrics_ref_map[tuple[0]] = diff_metrics
-			self.__diff_metrics_tar_map[tuple[1]] = diff_metrics
+				self.__ref_out_diff_paths_map[tuple[0]] = diff_image_path
+				self.__tar_out_diff_paths_map[tuple[1]] = diff_image_path
+				self.__diff_metrics_ref_map[tuple[0]] = diff_metrics
+				self.__diff_metrics_tar_map[tuple[1]] = diff_metrics
+			except Exception as e:
+				print(stdout)
+				print(e)
 
 	def __populate_file_paths(self):
 		if not self.__src_file_paths:
@@ -221,9 +225,9 @@ class Regression(object):
 		dict['diff_metrics_tar_map'] = self.__diff_metrics_tar_map
 		dict['ref_out_diff_map'] = self.__ref_out_diff_paths_map
 		dict['tar_out_diff_map'] = self.__tar_out_diff_paths_map
-		with open('cache.json', 'w') as file:
+		with open('cache.json', 'wb') as file:
 			json_str = json.dumps(dict, ensure_ascii=False, cls=documents.JsonEncoder)
-			file.write(json_str)
+			file.write(json_str.encode('utf-8'))
 
 	def run_image_diff(self):
 		self.__populate_file_paths()
@@ -269,10 +273,10 @@ class Regression(object):
 
 
 	def __get_all_files(self, dir, ext_list):
-		try:
-			if not self.__src_file_paths:
-				for root, subFolders, files in os.walk(dir):
-					for file in files:
+		if not self.__src_file_paths:
+			for root, subFolders, files in os.walk(dir):
+				for file in files:
+					try:
 						if os.path.splitext(file)[1].lower() in ext_list:
 							if not self.__out_dir:
 								relpath = os.path.relpath(root, self.__src_testdir)
@@ -289,21 +293,20 @@ class Regression(object):
 										os.makedirs(path)
 									else:
 										self.__delete_all(path)
-
 							print(os.path.join(root, file) + ' added to queue')
 							self.__src_file_paths.append(os.path.join(root, file))
-		except Exception as e:
-			print(e)
+					except Exception as e:
+						print(e)
 		return self.__src_file_paths
 
 	def run_all_files(self):
 		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
 
 		allfiles = '|'.join(map(str, allfiles))
-		with open('allfiles.txt', 'w') as file:
-			file.write(allfiles)
+		with open('allfiles.txt', 'wb') as file:
+			file.write(allfiles.encode('utf-8'))
 
-		refargs = ['python', 'reg_helper.py',
+		refargs = [sys.executable, 'reg_helper.py',
 				   '--files', '',
 				   '--src_dir', self.__src_testdir,
 				   '--ref_out_dir', '' if not self.__ref_out else self.__ref_out,
@@ -313,7 +316,7 @@ class Regression(object):
 				   '--ref_version_name', self.__ref_version,
 				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
 
-		tarargs = ['python', 'reg_helper.py',
+		tarargs = [sys.executable, 'reg_helper.py',
 				   '--files', '',
 				   '--src_dir', self.__src_testdir,
 				   '--tar_out_dir', '' if not self.__tar_out else self.__tar_out,
@@ -347,10 +350,10 @@ class Regression(object):
 		return os.path.join('diff', self.__ref_version + '-' + self.__tar_version) if self.__out_dir else self.__diff_out
 
 	def get_versions(self):
-		refargs = ['python', 'reg_helper.py', '--use_ref_sdk', '' if not self.__use_ref_sdk else self.__use_ref_sdk, '--version', '--ref_bin_path', self.__ref_bin_dir]
-		tarargs = ['python', 'reg_helper.py', '--use_tar_sdk', '' if not self.__use_tar_sdk else self.__use_tar_sdk, '--version', '--tar_bin_path', self.__tar_bin_dir]
+		refargs = [sys.executable, 'reg_helper.py', '--use_ref_sdk', '' if not self.__use_ref_sdk else self.__use_ref_sdk, '--version', '--ref_bin_path', self.__ref_bin_dir]
+		tarargs = [sys.executable, 'reg_helper.py', '--use_tar_sdk', '' if not self.__use_tar_sdk else self.__use_tar_sdk, '--version', '--tar_bin_path', self.__tar_bin_dir]
 
-		pattern = '.*(\d+\.\d+).'
+		pattern = b'.*(\d+\.\d+).'
 
 		refstdout = ''
 		tarstdout = ''
@@ -368,8 +371,8 @@ class Regression(object):
 			if ret:
 				tarstdout = ret.group(1)
 
-		self.__ref_version = refstdout
-		self.__tar_version = tarstdout
+		self.__ref_version = refstdout.decode('utf-8')
+		self.__tar_version = tarstdout.decode('utf-8')
 
 		# Mongodb doens't like keys with '.' inside
 		self.__ref_version = self.__ref_version.replace('.', '_')
@@ -412,7 +415,7 @@ class Regression(object):
 	def __hash(self, filepath):
 		import hashlib
 		try:
-			with open(filepath, 'r') as file:
+			with open(filepath, 'rb') as file:
 				sha1 = hashlib.sha1(file.read())
 				# Append file name in order to avoid conflicts
 				return sha1.hexdigest() + '_' + os.path.split(filepath)[1]
@@ -439,8 +442,8 @@ class Regression(object):
 
 	def __recover_cache(self):
 		if not self.__diff_metrics_ref_map or not self.__diff_metrics_tar_map or not self.__ref_out_diff_paths_map or not self.__tar_out_diff_paths_map:
-			with open('cache.json', 'r') as file:
-				dict = json.loads(file.read())
+			with open('cache.json', 'rb') as file:
+				dict = json.loads(file.read().decode('utf-8'))
 				diff_metrics_ref_map = dict['diff_metrics_ref_map']
 				diff_metrics_tar_map = dict['diff_metrics_tar_map']
 
@@ -536,8 +539,8 @@ class Regression(object):
 			db_ret.append(id)
 
 		print(serialize_ret)
-		with open('serializeout.json', 'w') as file:
-			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')))
+		with open('serializeout.json', 'wb') as file:
+			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
 
 
 def main():
@@ -568,10 +571,11 @@ def main():
 	start_time = time.time()
 	#regression = Regression(src_testdir='test_files/sub/sub', out_dir='test_out', concur=8,tar_bin_dir='ref_bin/pdf2image' ,ref_bin_dir='tar_bin/6.6.0/pdf2image', do_diff=True)
 
-	regression = Regression(src_testdir='D:/PDFTest', out_dir='D:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
+	regression = Regression(src_testdir='D:/PDFTest/Miscellaneous', out_dir='G:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
 
 	regression.run_all_files()
-	regression.update_database()
+	#regression.run_image_diff()
+	#regression.update_database()
 	print('Elapsed: ' + str(time.time() - start_time))
 
 if __name__ == '__main__':
