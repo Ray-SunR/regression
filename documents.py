@@ -287,8 +287,8 @@ class Reference(Base):
 				page.set('page_num', page_num)
 				page.set('ext', 'png')
 				page.set('path', os.path.abspath(ref_outs[page_num]))
-				with open(ref_outs[page_num], 'r') as mfile:
-					page.set('binary', Binary(mfile.read()))
+				# with open(ref_outs[page_num], 'r') as mfile:
+				# 	page.set('binary', Binary(mfile.read()))
 
 			metrics_tar_map = regression.diff_metrics_tar_map()
 			difference = Difference()
@@ -308,8 +308,8 @@ class Reference(Base):
 				page.set('page_num', page_num)
 				page.set('ext', 'png')
 				page.set('path', os.path.abspath(diff_outs[page_num]))
-				with open(diff_outs[page_num], 'r') as mfile:
-					page.set('binary', Binary(mfile.read()))
+				# with open(diff_outs[page_num], 'r') as mfile:
+				# 	page.set('binary', Binary(mfile.read()))
 
 				assert tar_outs[page_num] in metrics_tar_map
 				metrics = metrics_tar_map[tar_outs[page_num]]
@@ -320,52 +320,8 @@ class Reference(Base):
 				metrics.set('hash', hash)
 				metrics.set('document_name', dname)
 		else:
-			for file in regression.ref_out_file_paths():
-				ret = re.search(pattern, file)
-				if not ret:
-					continue
-
-				page_num = int(ret.group(1)) if ret.group(1) else 1
-				page = Page()
-				self.get('pages').append(page)
-
-				page.set('hash', hash)
-				page.set('version', self.get('version'))
-				page.set('document_name', dname)
-				page.set('page_num', page_num)
-				page.set('ext', 'png')
-				with open(file, 'r') as mfile:
-					page.set('binary', Binary(mfile.read()))
-					page.set('path', file)
-
-
-				metrics = regression.diff_metrics_ref_map()
-				assert file in metrics
-				metric = metrics[file]
-				metric.set('version', regression.get_target_version())
-				metric.set('hash', hash)
-				metric.set('document_name', dname)
-
-				if regression.get_target_version() in self.get('diffs').keys():
-					metric = self.get('diffs')[regression.get_target_version()][0]
-				else:
-					self.get('diffs')[regression.get_target_version()] = []
-					self.get('diffs')[regression.get_target_version()].append(metric)
-
-				diff_page = Page()
-				metric.get('pages').append(diff_page)
-
-				diff_page.set('version', regression.get_target_version())
-				diff_page.set('document_name', dname)
-				diff_page.set('hash', hash)
-				diff_page.set('page_num', page_num)
-				diff_page.set('ext', 'png')
-
-				assert file in regression.ref_out_diff_map()
-				diff_page_path = regression.ref_out_diff_map()[file]
-				with open(diff_page_path, 'r') as mfile:
-					diff_page.set('binary', Binary(mfile.read()))
-					diff_page.set('path', os.path.abspath(diff_page_path))
+			# Not supposed to be here if you are in a simple regression mode
+			assert (False)
 
 
 class Page(Base):
