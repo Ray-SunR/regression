@@ -23,13 +23,7 @@ class Base(object):
 
 	def serialize(self, bson):
 		for key in self._impl.keys():
-			if isinstance(self._impl[key], str):
-				bson[key] = self._impl[key]
-			elif isinstance(self._impl[key], float):
-				bson[key] = self._impl[key]
-			elif isinstance(self._impl[key], int):
-				bson[key] = self._impl[key]
-			elif isinstance(self._impl[key], Base):
+			if isinstance(self._impl[key], Base):
 				obj = {}
 				self._impl[key].serialize(obj)
 				bson[key] = obj
@@ -56,7 +50,7 @@ class Base(object):
 						obj[k] = tmp_obj
 				bson[key] = obj
 			else:
-				assert False
+				bson[key] = self._impl[key]
 
 	def bson(self, collections, refversion, tarversion):
 		pass
@@ -260,7 +254,7 @@ class Reference(Base):
 
 	def populate(self, regression, document):
 		# remember: the output generated from binary (pdf2image) for single page pdf will not include the page number
-		pattern = os.path.splitext(document.get('document_name'))[0] + '(?:\.png|_(\d+).png)'
+		pattern = re.escape(os.path.splitext(document.get('document_name'))[0]) + '(?:\.png|_(\d+).png)'
 
 		dname = document.get('document_name')
 		hash = document.get('hash')
@@ -302,7 +296,7 @@ class Reference(Base):
 			difference.set('num_page_diffs', len(ref_outs.keys()) - len(tar_outs.keys()))
 			self.get('diffs')[regression.get_target_version()] = difference
 
-			for page_num in tar_outs.keys():
+			for page_num in diff_outs.keys():
 				if page_num > 10:
 					continue
 				page = Page()

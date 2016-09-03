@@ -3,7 +3,7 @@ __author__ = 'Renchen'
 import documents
 import pymongo
 from multiprocessing.dummy import Pool as ThreadPool
-import reg_helper
+
 import os.path
 import sys
 import subprocess
@@ -229,7 +229,7 @@ class Regression(object):
 
 		if self.__out_dir:
 			for file in self.__src_file_paths:
-				pattern = os.path.splitext(os.path.basename(file))[0] + '(?:\.png|_(\d+).png)'
+				pattern = re.escape(os.path.splitext(os.path.basename(file))[0]) + '(?:\.png|_(\d+).png)'
 				try:
 					hash = self.__hash(file)
 					if not hash:
@@ -514,6 +514,22 @@ class Regression(object):
 			ret.append(tag)
 		return ret
 
+	def __serialize_impl(self, args):
+		document = args[0]
+		container = args[1]
+		obj = {}
+		document.serialize(obj)
+		container.append(obj)
+
+	def __dumpto_database_impl(self, args):
+		document = args[0]
+		collections = args[2]
+		document.bson(collections, self.__ref_version, self.__tar_version)
+		try:
+			print(document.get('document_name') + ' dumped to database successfully')
+		except Exception as e:
+			print(e)
+
 	def update_database(self):
 		# Only possible through centralized mode
 		if not self.__out_dir:
@@ -553,50 +569,24 @@ class Regression(object):
 				print(e)
 
 		serialize_ret = []
-		db_ret = []
-		for document in alldocs:
-			obj = {}
-			document.serialize(obj)
-			serialize_ret.append(obj)
-			id = document.bson(collections, self.__ref_version, self.__tar_version)
-			db_ret.append(id)
-
-		#print(serialize_ret)
-		with open('serializeout.json', 'wb') as file:
-			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
-
-	def __run_sub_folders_impl(self, folder):
-		regression = Regression(src_testdir=folder, out_dir=self.__out_dir, concur=self.__concurency, tar_bin_dir=self.__tar_bin_dir, ref_bin_dir=self.__ref_bin_dir, do_diff=True)
-		regression.run_all_files()
-		regression.update_database()
-
-	def run_folders(self):
-		folders = []
-		files = []
-		for root, subFolders, files in os.walk(self.__src_testdir):
-			# Get first level sub folders
-			folders = [os.path.join(root, folder) for folder in subFolders]
-			files = [os.path.join(root, file) for file in files if os.path.splitext(file)[1] in self.__exts]
-			break
-
-		if files:
-			pool1 = ThreadPool(self.__concurency)
-			self.__src_file_paths = files
-			pool1.map(self.__run_all_files_impl, files)
-			pool1.close()
-			pool1.join()
-			self.update_database()
-			self.__src_file_paths = []
+		args = [(document, serialize_ret, collections) for document in alldocs]
 
 		pool = ThreadPool(self.__concurency)
-		pool.map(self.__run_sub_folders_impl, folders)
+		pool.map(self.__serialize_impl, args)
 		pool.close()
 		pool.join()
+
+		pool = ThreadPool(self.__concurency)
+		pool.map(self.__dumpto_database_impl, args)
+		pool.close()
+		pool.join()
+
+		with open('serializeout.json', 'wb') as file:
+			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
 
 	def run(self):
 		self.run_all_files()
 		self.update_database()
-
 
 def main():
 
@@ -607,9 +597,15 @@ def main():
 
 	import time
 	start_time = time.time()
-
-	regression = Regression(src_testdir='D:/PDFTest/FILTERS', out_dir='G:/Regression', concur=16, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
+	regression = Regression(src_testdir='test_files/', out_dir='test_out', concur=8,tar_bin_dir='tar_bin/pdf2image' ,ref_bin_dir='ref_bin/pdf2image', do_diff=True)
 	regression.run()
+	#regression.update_database()
+
+	#regression = Regression(src_testdir='D:/PDFTest/Miscellaneous', out_dir='G:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
+
+	#regression.run_all_files()
+	#regression.run_image_diff()
+	#regression.update_database()
 	print('Elapsed: ' + str(time.time() - start_time))
 
 if __name__ == '__main__':
