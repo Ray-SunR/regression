@@ -6,10 +6,9 @@ import os.path
 import sys
 import argparse
 import subprocess
-import codecs
 import re
 
-class Regression(object):
+class regression_core_task(object):
 	def __init__(self,
 				 files,
 				 src_dir,
@@ -223,7 +222,10 @@ class Regression(object):
 				print('An error occurred when converting: ' + filepath)
 
 			stdout = process.communicate()[0]
-			print(stdout.decode('utf-8'))
+			try:
+				print(stdout.decode('utf-8'))
+			except:
+				pass
 			return
 
 	def Run(self):
@@ -234,8 +236,8 @@ class Regression(object):
 
 def main():
 	parser = argparse.ArgumentParser()
-	parser.add_argument("-f",
-						"--files",
+	parser.add_argument("-fn",
+						"--filename",
 						type=str,
 						default=None,
 						help="The source test file path in a single string delimited by '|' directory")
@@ -291,10 +293,12 @@ def main():
 	args = parser.parse_args()
 
 	files = ''
-	with codecs.open('allfiles.txt', 'r', 'utf-8') as file:
-		files = file.read()
+	if not args.version:
+		assert args.filename and os.path.exists(args.filename)
+		with open(args.filename, 'rb') as file:
+			files = file.read().decode('utf-8')
 
-	regression = Regression(ref_output_dir=args.ref_out_dir,
+	regression = regression_core_task(ref_output_dir=args.ref_out_dir,
 							tar_output_dir=args.tar_out_dir,
 							files=files,
 							version=args.version,
