@@ -1,10 +1,9 @@
 __author__ = 'Renchen'
 
-import multiprocessing
 import documents
 import pymongo
 from multiprocessing.dummy import Pool as ThreadPool
-
+import reg_helper
 import os.path
 import sys
 import subprocess
@@ -107,6 +106,9 @@ class Regression(object):
 
 		self.__ref_version, self.__tar_version = self.get_versions()
 
+		# Set maximum number of pages to run image diff
+		self.__num_pages_to_diff = 10
+
 
 	# Retun the relationship between ref out files and diff files
 	# store their paths
@@ -140,30 +142,12 @@ class Regression(object):
 	def diff_metrics_tar_map(self):
 		return self.__diff_metrics_tar_map
 
-	def __run_regression_impl(self, lib, filepath, output_path):
-		try:
-			wordoc = lib.PDFDoc(filepath)
-			draw = lib.PDFDraw()
-			draw.SetDPI(92)
-
-			it = wordoc.GetPageIterator()
-			pagenum = 1
-			prefix = os.path.commonprefix([filepath, self.__src_testdir])
-			tail = os.path.relpath(filepath, prefix)
-			basename = os.path.basename(self.__src_testdir)
-			while (it.HasNext()):
-				output_file = os.path.join(output_path, basename, tail + "_" + str(pagenum) + ".png")
-				draw.Export(it.Current(), output_file)
-				sys.stdout.flush()
-				print(output_file)
-				it.Next()
-				pagenum += 1
-		except Exception as e:
-			print(e)
-
 	def __run_image_diff_impl(self, tuple):
 		args = [sys.executable, 'image_diff.py', '--file1', tuple[0], '--file2', tuple[1], '--output', tuple[2]]
-		print('Running diff for %s and %s' % (tuple[0], tuple[1]))
+		try:
+			print('Running diff for %s and %s' % (tuple[0], tuple[1]))
+		except:
+			pass
 		process = subprocess.Popen(args, stdout=subprocess.PIPE)
 		stdout = process.communicate()[0].decode('utf-8')
 		if stdout:
@@ -179,7 +163,6 @@ class Regression(object):
 				self.__diff_metrics_ref_map[tuple[0]] = diff_metrics
 				self.__diff_metrics_tar_map[tuple[1]] = diff_metrics
 			except Exception as e:
-				print(stdout)
 				print(e)
 
 	def __populate_file_paths(self):
@@ -229,32 +212,61 @@ class Regression(object):
 			json_str = json.dumps(dict, ensure_ascii=False, cls=documents.JsonEncoder)
 			file.write(json_str.encode('utf-8'))
 
+	def __filter_files(self, dir, pattern):
+		result = {} # page num -> path
+		for file in os.listdir(dir):
+			ret = re.search(pattern, file)
+			if not ret:
+				continue
+			page_num = int(ret.group(1)) if ret.group(1) else 1
+			result[page_num] = os.path.join(dir, file)
+		return result
+
 	def run_image_diff(self):
 		self.__populate_file_paths()
-		pool = ThreadPool(8)
+		pool = ThreadPool(self.__concurency)
 		args = []
 
 		if self.__out_dir:
 			for file in self.__src_file_paths:
+				pattern = os.path.splitext(os.path.basename(file))[0] + '(?:\.png|_(\d+).png)'
 				try:
 					hash = self.__hash(file)
 					if not hash:
 						continue
 					ref_image_paths = []
 					tar_image_paths = []
-					self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'ref', self.__ref_version), '.png', ref_image_paths)
-					self.__get_files_recursively(os.path.join(self.__out_dir, hash, 'tar'), '.png', tar_image_paths)
-					ref_image_names = [os.path.split(path)[1] for path in ref_image_paths]
-					tar_image_names = [os.path.split(path)[1] for path in tar_image_paths]
+					ref_outs = self.__filter_files(os.path.join(self.__out_dir, hash, 'ref', self.__ref_version), pattern)
+					tar_outs = self.__filter_files(os.path.join(self.__out_dir, hash, 'tar'), pattern)
+
+					ref_image_names = []
+					tar_image_names = []
+					for key in ref_outs.keys():
+						if key > self.__num_pages_to_diff:
+							continue
+						ref_image_names.append(os.path.split(ref_outs[key])[1])
+						ref_image_paths.append(ref_outs[key])
+						if len(ref_image_paths) == self.__num_pages_to_diff:
+							break
+
+					for key in tar_outs.keys():
+						if key > self.__num_pages_to_diff:
+							continue
+						tar_image_names.append(os.path.split(tar_outs[key])[1])
+						tar_image_paths.append(tar_outs[key])
+						if len(tar_image_paths) == self.__num_pages_to_diff:
+							break
+
+					folder_name = self.__ref_version + '-' + self.__tar_version
+					diffpath = os.path.join(self.__out_dir, hash, 'diff', folder_name)
+					if os.path.exists(diffpath):
+						self.__delete_all(diffpath)
+					else:
+						os.makedirs(diffpath)
+
 					for image_path in ref_image_paths:
 						if os.path.split(image_path)[1] in tar_image_names:
 							import time
-							folder_name = self.__ref_version + '-' + self.__tar_version
-							diffpath = os.path.join(self.__out_dir, hash, 'diff', folder_name)
-							if os.path.exists(diffpath):
-								self.__delete_all(diffpath)
-							else:
-								os.makedirs(diffpath)
 							args.append((image_path, os.path.join(self.__out_dir, hash, 'tar', os.path.split(image_path)[1]), diffpath))
 						else:
 							tl=False
@@ -293,21 +305,28 @@ class Regression(object):
 										os.makedirs(path)
 									else:
 										self.__delete_all(path)
-							print(os.path.join(root, file) + ' added to queue')
+							try:
+								print(os.path.join(root, file) + ' added to queue')
+							except:
+								pass
 							self.__src_file_paths.append(os.path.join(root, file))
 					except Exception as e:
 						print(e)
 		return self.__src_file_paths
 
-	def run_all_files(self):
-		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
-
-		allfiles = '|'.join(map(str, allfiles))
-		with open('allfiles.txt', 'wb') as file:
+	def __run_all_files_impl(self, files):
+		if not files:
+			return
+		if not isinstance(files, list):
+			files = [files]
+		allfiles = '|'.join(files)
+		import hashlib
+		hash = hashlib.sha1(allfiles.encode('utf-8')).hexdigest()
+		allfiles_fn = os.path.split(self.__src_testdir)[1] + '_' + hash + '.txt'
+		with open(allfiles_fn, 'wb') as file:
 			file.write(allfiles.encode('utf-8'))
-
 		refargs = [sys.executable, 'reg_helper.py',
-				   '--files', '',
+				   '--filename', allfiles_fn,
 				   '--src_dir', self.__src_testdir,
 				   '--ref_out_dir', '' if not self.__ref_out else self.__ref_out,
 				   '--concurency', str(self.__concurency),
@@ -317,7 +336,7 @@ class Regression(object):
 				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
 
 		tarargs = [sys.executable, 'reg_helper.py',
-				   '--files', '',
+				   '--filename', allfiles_fn,
 				   '--src_dir', self.__src_testdir,
 				   '--tar_out_dir', '' if not self.__tar_out else self.__tar_out,
 				   '--concurency', str(self.__concurency),
@@ -339,6 +358,10 @@ class Regression(object):
 			self.run_image_diff()
 		else:
 			self.__cache()
+
+	def run_all_files(self):
+		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
+		self.__run_all_files_impl(allfiles)
 
 	def ref_dir_name(self):
 		return os.path.join('ref', self.__ref_version) if self.__out_dir else self.__ref_out
@@ -485,20 +508,20 @@ class Regression(object):
 		relpath = os.path.relpath(dpath, prefix)
 		relpath_nofname = os.path.split(relpath)[0]
 		# using this relpath_nofname to get tags
-		ret = []
+		ret = [os.path.split(self.__src_testdir)[1]]
 		while relpath_nofname:
 			(relpath_nofname, tag) = os.path.split(relpath_nofname)
 			ret.append(tag)
 		return ret
 
 	def update_database(self):
-		collections = self.__collections()
-		self.__recover_cache()
-		refversion, tarversion = self.get_versions()
-
 		# Only possible through centralized mode
 		if not self.__out_dir:
 			return
+
+		collections = self.__collections()
+		self.__recover_cache()
+		refversion, tarversion = self.get_versions()
 
 		alldocs = []
 		for path in self.__src_file_paths:
@@ -538,29 +561,44 @@ class Regression(object):
 			id = document.bson(collections, self.__ref_version, self.__tar_version)
 			db_ret.append(id)
 
-		print(serialize_ret)
+		#print(serialize_ret)
 		with open('serializeout.json', 'wb') as file:
 			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
 
+	def __run_sub_folders_impl(self, folder):
+		regression = Regression(src_testdir=folder, out_dir=self.__out_dir, concur=self.__concurency, tar_bin_dir=self.__tar_bin_dir, ref_bin_dir=self.__ref_bin_dir, do_diff=True)
+		regression.run_all_files()
+		regression.update_database()
+
+	def run_folders(self):
+		folders = []
+		files = []
+		for root, subFolders, files in os.walk(self.__src_testdir):
+			# Get first level sub folders
+			folders = [os.path.join(root, folder) for folder in subFolders]
+			files = [os.path.join(root, file) for file in files if os.path.splitext(file)[1] in self.__exts]
+			break
+
+		if files:
+			pool1 = ThreadPool(self.__concurency)
+			self.__src_file_paths = files
+			pool1.map(self.__run_all_files_impl, files)
+			pool1.close()
+			pool1.join()
+			self.update_database()
+			self.__src_file_paths = []
+
+		pool = ThreadPool(self.__concurency)
+		pool.map(self.__run_sub_folders_impl, folders)
+		pool.close()
+		pool.join()
+
+	def run(self):
+		self.run_all_files()
+		self.update_database()
+
 
 def main():
-	#regression = Regression(src_testdir='/Users/Renchen/Documents/Work/GitHub/regression/test_files', ref_outdir='/Users/Renchen/Documents/Work/GitHub/regression/ref_out', tar_outdir='/Users/Renchen/Documents/Work/GitHub/regression/tar_out', diff_outdir='/Users/Renchen/Documents/Work/GitHub/regression/diff', concur=4, ref_use_sdk=True, tar_use_sdk=True)
-
-	#regression = Regression(src_testdir='D:/PDFTest/Annotations',
-	# 						out_dir='D:/Regression/out',
-	# 						concur=4,
-	# 						ref_bin_dir='D:/Work/Github/regression/ref_bin/docpub.exe',
-	# 						tar_bin_dir='D:/Work/Github/regression/tar_bin/docpub.exe',
-	# 						do_pdf=True)
-
-	# regression = Regression(src_testdir='D:/OfficeTest/UnitTests',
-	# 						tar_outdir='D:/Regression/Target',
-	# 						concur=8,
-	# 						tar_bin_dir='D:/Work/Github/Regression/tar_bin/docpub.exe',
-	# 						do_pdf=False,
-	# 						do_docx=True,
-	# 						do_pptx=True,
-	# 						do_diff=False)
 
 	# Simple regression mode
 	#regression = Regression(src_testdir='test_files', ref_outdir='test_out/ref', tar_outdir='test_out/tar', diff_outdir='test_out/diff', ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_pdf=True, do_diff=True)
@@ -569,13 +607,9 @@ def main():
 
 	import time
 	start_time = time.time()
-	#regression = Regression(src_testdir='test_files/sub/sub', out_dir='test_out', concur=8,tar_bin_dir='ref_bin/pdf2image' ,ref_bin_dir='tar_bin/6.6.0/pdf2image', do_diff=True)
 
-	regression = Regression(src_testdir='D:/PDFTest/Miscellaneous', out_dir='G:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
-
-	regression.run_all_files()
-	#regression.run_image_diff()
-	#regression.update_database()
+	regression = Regression(src_testdir='D:/PDFTest/FILTERS', out_dir='G:/Regression', concur=16, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
+	regression.run()
 	print('Elapsed: ' + str(time.time() - start_time))
 
 if __name__ == '__main__':
