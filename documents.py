@@ -278,9 +278,13 @@ class Reference(Base):
 			diff_outs = self.__filter_files(diff_dir, pattern)
 
 			for page_num in ref_outs.keys():
+				if page_num > 10:
+					continue
 				page = Page()
-				self.get('pages')[page_num] = page
 
+				self.get('pages')[page_num] = page
+				if len(self.get('pages')) > 10:
+					break
 				page.set('hash', hash)
 				page.set('version', regression.get_reference_version())
 				page.set('document_name', dname)
@@ -299,9 +303,13 @@ class Reference(Base):
 			self.get('diffs')[regression.get_target_version()] = difference
 
 			for page_num in tar_outs.keys():
+				if page_num > 10:
+					continue
 				page = Page()
-				difference.get('pages')[page_num] = page
 
+				difference.get('pages')[page_num] = page
+				if len(difference.get('pages').keys()) > 10:
+					break
 				page.set('hash', hash)
 				page.set('version', regression.get_target_version())
 				page.set('document_name', dname)
