@@ -19,8 +19,6 @@ class Regression(object):
 				 diff_outdir=None,
 				 out_dir=None, # This parameter overrides the previous three
 				 concur=4,
-				 ref_use_sdk=False,
-				 tar_use_sdk=False,
 				 ref_bin_dir=None,
 				 tar_bin_dir=None,
 				 do_pdf=True,
@@ -28,6 +26,7 @@ class Regression(object):
 				 do_pptx=False,
 				 do_diff=False):
 
+		self.__error_handler = open('error.txt', 'wb')
 		self.__exts = []
 		if do_pdf:
 			self.__exts.append('.pdf')
@@ -72,12 +71,8 @@ class Regression(object):
 		assert os.path.exists(self.__src_testdir)
 
 		self.__concurency = concur
-		self.__use_ref_sdk = ref_use_sdk
 		self.__ref_bin_dir = ref_bin_dir if ref_bin_dir else ''
-		self.__use_tar_sdk = tar_use_sdk
 		self.__tar_bin_dir = tar_bin_dir if tar_bin_dir else ''
-		#assert self.__use_ref_sdk and not self.__ref_bin_dir or self.__ref_bin_dir and not self.__use_ref_sdk
-		#assert self.__use_tar_sdk and not self.__tar_bin_dir or self.__tar_bin_dir and not self.__use_tar_sdk
 
 		self.__documents = []
 		self.__benchmarks = []
@@ -163,6 +158,8 @@ class Regression(object):
 				self.__diff_metrics_ref_map[tuple[0]] = diff_metrics
 				self.__diff_metrics_tar_map[tuple[1]] = diff_metrics
 			except Exception as e:
+				str = 'image_diff: %s and %s image diff operation failed. Reason: %s' % (tuple[0], tuple[1], str(e))
+				self.__error_handler.write(str.encode('utf-8'))
 				print(e)
 
 	def __populate_file_paths(self):
@@ -271,6 +268,7 @@ class Regression(object):
 						else:
 							tl=False
 				except Exception as e:
+					self.__error_handler.write(str(e).encode('utf-8'))
 					print(e)
 		else:
 			for file in self.__ref_out_paths:
@@ -307,10 +305,14 @@ class Regression(object):
 										self.__delete_all(path)
 							try:
 								print(os.path.join(root, file) + ' added to queue')
-							except:
+							except Exception as e:
+								str = 'get_all_files: failed. Reason %s' % str(e)
+								self.__error_handler.write(str.encode('utf-8'))
 								pass
 							self.__src_file_paths.append(os.path.join(root, file))
 					except Exception as e:
+						str = 'get_all_files: failed. Reason %s' % str(e)
+						self.__error_handler.write(str.encode('utf-8'))
 						print(e)
 		return self.__src_file_paths
 
@@ -330,7 +332,6 @@ class Regression(object):
 				   '--src_dir', self.__src_testdir,
 				   '--ref_out_dir', '' if not self.__ref_out else self.__ref_out,
 				   '--concurency', str(self.__concurency),
-				   '--use_ref_sdk', str(self.__use_ref_sdk),
 				   '--ref_bin_path', self.__ref_bin_dir,
 				   '--ref_version_name', self.__ref_version,
 				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
@@ -340,15 +341,14 @@ class Regression(object):
 				   '--src_dir', self.__src_testdir,
 				   '--tar_out_dir', '' if not self.__tar_out else self.__tar_out,
 				   '--concurency', str(self.__concurency),
-				   '--use_tar_sdk', str(self.__use_tar_sdk),
 				   '--tar_bin_path', self.__tar_bin_dir,
 				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
 
-		if (self.__ref_out or self.__out_dir) and (self.__use_ref_sdk or self.__ref_bin_dir):
+		if (self.__ref_out or self.__out_dir) and self.__ref_bin_dir:
 			refregression = subprocess.Popen(refargs)
 			refregression.communicate()
 
-		if (self.__tar_out or self.__out_dir) and (self.__use_tar_sdk or self.__tar_bin_dir) :
+		if (self.__tar_out or self.__out_dir) and self.__tar_bin_dir:
 			tarregression = subprocess.Popen(tarargs)
 			tarregression.communicate()
 
@@ -359,7 +359,7 @@ class Regression(object):
 		else:
 			self.__cache()
 
-	def run_all_files(self):
+	def run_alln_files(self):
 		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
 		self.__run_all_files_impl(allfiles)
 
@@ -373,26 +373,26 @@ class Regression(object):
 		return os.path.join('diff', self.__ref_version + '-' + self.__tar_version) if self.__out_dir else self.__diff_out
 
 	def get_versions(self):
-		refargs = [sys.executable, 'reg_helper.py', '--use_ref_sdk', '' if not self.__use_ref_sdk else self.__use_ref_sdk, '--version', '--ref_bin_path', self.__ref_bin_dir]
-		tarargs = [sys.executable, 'reg_helper.py', '--use_tar_sdk', '' if not self.__use_tar_sdk else self.__use_tar_sdk, '--version', '--tar_bin_path', self.__tar_bin_dir]
+		assert(self.__ref_bin_dir)
+		assert(self.__tar_bin_dir)
+		refargs = [sys.executable, 'reg_helper.py', '--version', '--ref_bin_path', self.__ref_bin_dir]
+		tarargs = [sys.executable, 'reg_helper.py', '--version', '--tar_bin_path', self.__tar_bin_dir]
 
 		pattern = b'.*(\d+\.\d+).'
 
 		refstdout = ''
 		tarstdout = ''
-		if self.__use_ref_sdk or self.__ref_bin_dir:
-			refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
-			refstdout = refversion.communicate()[0]
-			ret = re.search(pattern, refstdout)
-			if ret:
-				refstdout = ret.group(1)
+		refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
+		refstdout = refversion.communicate()[0]
+		ret = re.search(pattern, refstdout)
+		if ret:
+			refstdout = ret.group(1)
 
-		if self.__use_tar_sdk or self.__tar_bin_dir:
-			tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
-			tarstdout = tarversion.communicate()[0]
-			ret = re.search(pattern, tarstdout)
-			if ret:
-				tarstdout = ret.group(1)
+		tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
+		tarstdout = tarversion.communicate()[0]
+		ret = re.search(pattern, tarstdout)
+		if ret:
+			tarstdout = ret.group(1)
 
 		self.__ref_version = refstdout.decode('utf-8')
 		self.__tar_version = tarstdout.decode('utf-8')
@@ -409,20 +409,12 @@ class Regression(object):
 		return self.__tar_version
 
 	def get_reference_run_type(self):
-		if self.__use_ref_sdk:
-			return 'sdk'
-		elif self.__ref_bin_dir:
-			return os.path.splitext(os.path.split(self.__ref_bin_dir)[1])[0]
-		else:
-			''
+		assert(self.__ref_bin_dir)
+		return os.path.splitext(os.path.split(self.__ref_bin_dir)[1])[0]
 
 	def get_target_run_type(self):
-		if self.__use_tar_sdk:
-			return 'sdk'
-		elif self.__tar_bin_dir:
-			return os.path.splitext(os.path.split(self.__tar_bin_dir)[1])[0]
-		else:
-			''
+		assert(self.__tar_bin_dir)
+		return os.path.splitext(os.path.split(self.__tar_bin_dir)[1])[0]
 
 	def __get_files_recursively(self, dir, exts, ret):
 		if not dir:
@@ -528,7 +520,24 @@ class Regression(object):
 		try:
 			print(document.get('document_name') + ' dumped to database successfully')
 		except Exception as e:
+			str = document.get('document_name') + (' failed to dump to database. Reason: %s') % str(e)
+			self.__error_handler.write(str.encode('utf-8'))
 			print(e)
+
+	def __sanity_check(self):
+		print('Performing sanity check...')
+		for path in self.__src_file_paths:
+			if self.__out_dir:
+				hash = self.__hash(path)
+				if not hash:
+					self.__error_handler.write((path + ' is missing\n').encode('utf-8'))
+					continue
+
+				ref_out = os.path.join(self.__out_dir, hash, 'ref', self.__ref_version)
+				if not os.path.exists(ref_out) or not os.listdir(ref_out):
+					self.__error_handler.write((path + ' is missing\n').encode('utf-8'))
+			else:
+				pass
 
 	def update_database(self):
 		# Only possible through centralized mode
@@ -544,6 +553,7 @@ class Regression(object):
 			try:
 				hash = self.__hash(path)
 				if not hash:
+					self.__error_handler.write((path + ' unhashable!\n').encode('utf-8'))
 					continue
 				benchmark = documents.Reference()
 				found_benchmark = collections['references'].find_one({'version': refversion, 'hash': hash})
@@ -566,6 +576,8 @@ class Regression(object):
 				benchmark.populate(self, document)
 				alldocs.append(document)
 			except Exception as e:
+				str = 'update_database: An error occurred while dumping %s to database, exception info: %s' % (path, str(e))
+				self.__error_handler.write(str.encode('utf-8'))
 				print(e)
 
 		serialize_ret = []
@@ -585,8 +597,9 @@ class Regression(object):
 			file.write(json.dumps(serialize_ret, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
 
 	def run(self):
-		self.run_all_files()
+		self.run_alln_files()
 		self.update_database()
+		self.__sanity_check()
 
 def main():
 
