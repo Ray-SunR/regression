@@ -10,7 +10,6 @@ class regression_core_task(object):
 	def __init__(self,
 				 files,
 				 src_dir,
-				 version=False,
 				 ref_output_dir=None,
 				 tar_output_dir=None,
 				 out_dir=None,
@@ -20,13 +19,6 @@ class regression_core_task(object):
 				 ref_version_name=None):
 
 		self.__bin_path = None
-		if version:
-			if ref_bin_dir:
-				self.__bin_path = ref_bin_dir
-			elif tar_bin_dir:
-				self.__bin_path = tar_bin_dir
-			print(str(self.__get_version()))
-			return
 
 		assert (ref_bin_dir or tar_bin_dir)
 
@@ -42,7 +34,7 @@ class regression_core_task(object):
 			elif tar_output_dir:
 				self.__output_dir = tar_output_dir
 
-		self.__files = files.split('|')
+		self.__files = files
 		self.__src_testdir = src_dir
 
 		self.__ref_or_tar = ''
@@ -68,13 +60,6 @@ class regression_core_task(object):
 
 		self.__concurency = concur
 
-
-	def __get_version(self):
-		assert self.__bin_path
-		assert os.path.exists(self.__bin_path)
-		commands = [self.__bin_path, '-v']
-		process = subprocess.Popen(commands, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-		return process.communicate()[0]
 
 	def __hash(self, fpath):
 		import hashlib
@@ -143,7 +128,6 @@ class regression_core_task(object):
 			commands = [fullbinpath, filepath, '-o', output_dir]
 		process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 		if process.returncode:
-
 			print('An error occurred when converting: ' + filepath)
 
 		stdout = process.communicate()[0]
@@ -158,76 +142,3 @@ class regression_core_task(object):
 		ret = pool.map(self.__run_impl, self.__files)
 		pool.close()
 		pool.join()
-
-def main():
-	parser = argparse.ArgumentParser()
-	parser.add_argument("-fn",
-						"--filename",
-						type=str,
-						default=None,
-						help="The source test file path in a single string delimited by '|' directory")
-	parser.add_argument("-v",
-						"--version",
-						action="store_true",
-						help="Get the current version of the sdk")
-	parser.add_argument("-s",
-						"--src_dir",
-						type=str,
-						default=None,
-						help="The source test directory")
-	parser.add_argument("-o",
-						"--out_dir",
-						type=str,
-						default=None,
-						help="The output directory. Note: This option overrides --ref_out_dir, --tar_out_dir!")
-	parser.add_argument("-ro",
-						"--ref_out_dir",
-						type=str,
-						default=None,
-						help="The reference output directory")
-	parser.add_argument("-to",
-						"--tar_out_dir",
-						type=str,
-						help="The target output direcotry")
-	parser.add_argument("-c",
-						"--concurency",
-						type=int,
-						default=4,
-						help="The concurency value. Default is 4")
-	parser.add_argument("-rbinpath",
-						"--ref_bin_path",
-						type=str,
-						help="Specify the binary executable path for reference")
-	parser.add_argument("-tbinpath",
-						"--tar_bin_path",
-						type=str,
-						help="Specify the binary executable path for reference")
-	parser.add_argument("-rvname",
-						"--ref_version_name",
-						type=str,
-						default='',
-						help="Specify the reference output version_name")
-	args = parser.parse_args()
-
-	files = ''
-	if not args.version:
-		assert args.filename and os.path.exists(args.filename)
-		with open(args.filename, 'rb') as file:
-			files = file.read().decode('utf-8')
-
-	regression = regression_core_task(ref_output_dir=args.ref_out_dir,
-							tar_output_dir=args.tar_out_dir,
-							files=files,
-							version=args.version,
-							src_dir=args.src_dir,
-							concur=args.concurency,
-							ref_bin_dir=args.ref_bin_path,
-							tar_bin_dir=args.tar_bin_path,
-							out_dir=args.out_dir,
-							ref_version_name=args.ref_version_name)
-	if not args.version:
-		regression.Run()
-
-if __name__ == '__main__':
-	main()
-

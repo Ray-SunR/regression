@@ -72,9 +72,6 @@ class Document(Base):
 		}
 
 	def bson(self, collections, refversion, tarversion):
-
-		if self.get('document_name') == "YuchenLiu's Driver licence.pdf":
-			tmp = 1
 		document_found = collections['documents'].find_one({'hash': self.get('hash')})
 		if document_found:
 			for key in self.get('references').keys():

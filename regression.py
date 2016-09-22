@@ -9,6 +9,7 @@ import sys
 import subprocess
 import json
 import re
+from reg_helper import regression_core_task
 
 
 class Regression(object):
@@ -319,45 +320,35 @@ class Regression(object):
 	def __run_all_files_impl(self, files):
 		if not files:
 			return
-		if not isinstance(files, list):
-			files = [files]
-		allfiles = '|'.join(files)
-		import hashlib
-		hash = hashlib.sha1(allfiles.encode('utf-8')).hexdigest()
-		allfiles_fn = os.path.split(self.__src_testdir)[1] + '_' + hash + '.txt'
-		with open(allfiles_fn, 'wb') as file:
-			file.write(allfiles.encode('utf-8'))
-		refargs = [sys.executable, 'reg_helper.py',
-				   '--filename', allfiles_fn,
-				   '--src_dir', self.__src_testdir,
-				   '--ref_out_dir', '' if not self.__ref_out else self.__ref_out,
-				   '--concurency', str(self.__concurency),
-				   '--ref_bin_path', self.__ref_bin_dir,
-				   '--ref_version_name', self.__ref_version,
-				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
 
-		tarargs = [sys.executable, 'reg_helper.py',
-				   '--filename', allfiles_fn,
-				   '--src_dir', self.__src_testdir,
-				   '--tar_out_dir', '' if not self.__tar_out else self.__tar_out,
-				   '--concurency', str(self.__concurency),
-				   '--tar_bin_path', self.__tar_bin_dir,
-				   '--out_dir', '' if not self.__out_dir else self.__out_dir]
+		core_task_ref = regression_core_task(files,
+											 self.__src_testdir,
+											 ref_output_dir=self.__ref_out,
+											 tar_output_dir=None,
+											 out_dir=self.__out_dir,
+											 concur=self.__concurency,
+											 ref_bin_dir=self.__ref_bin_dir,
+											 tar_bin_dir=None,
+											 ref_version_name=self.__ref_version)
 
-		if (self.__ref_out or self.__out_dir) and self.__ref_bin_dir:
-			refregression = subprocess.Popen(refargs)
-			refregression.communicate()
+		core_task_tar = regression_core_task(files,
+											 self.__src_testdir,
+											 ref_output_dir=None,
+											 tar_output_dir=self.__tar_out,
+											 out_dir=self.__out_dir,
+											 concur=self.__concurency,
+											 ref_bin_dir=None,
+											 tar_bin_dir=self.__tar_bin_dir)
 
-		if (self.__tar_out or self.__out_dir) and self.__tar_bin_dir:
-			tarregression = subprocess.Popen(tarargs)
-			tarregression.communicate()
-
-		self.__populate_file_paths()
+		core_task_ref.Run()
+		core_task_tar.Run()
 
 		if self.__do_diff:
 			self.run_image_diff()
 		else:
 			self.__cache()
+		return
+
 
 	def run_alln_files(self):
 		allfiles = self.__get_all_files(self.__src_testdir, self.__exts)
@@ -375,21 +366,18 @@ class Regression(object):
 	def get_versions(self):
 		assert(self.__ref_bin_dir)
 		assert(self.__tar_bin_dir)
-		refargs = [sys.executable, 'reg_helper.py', '--version', '--ref_bin_path', self.__ref_bin_dir]
-		tarargs = [sys.executable, 'reg_helper.py', '--version', '--tar_bin_path', self.__tar_bin_dir]
+
+		refversion = subprocess.Popen([self.__ref_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+		tarversion = subprocess.Popen([self.__tar_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
 
 		pattern = b'.*(\d+\.\d+).'
 
-		refstdout = ''
-		tarstdout = ''
-		refversion = subprocess.Popen(refargs, stdout=subprocess.PIPE)
 		refstdout = refversion.communicate()[0]
+		tarstdout = tarversion.communicate()[0]
 		ret = re.search(pattern, refstdout)
 		if ret:
 			refstdout = ret.group(1)
 
-		tarversion = subprocess.Popen(tarargs, stdout=subprocess.PIPE)
-		tarstdout = tarversion.communicate()[0]
 		ret = re.search(pattern, tarstdout)
 		if ret:
 			tarstdout = ret.group(1)
@@ -554,6 +542,9 @@ class Regression(object):
 				hash = self.__hash(path)
 				if not hash:
 					self.__error_handler.write((path + ' unhashable!\n').encode('utf-8'))
+					continue
+				ref_out = os.path.join(self.__out_dir, hash, 'ref', self.__ref_version)
+				if not os.path.exists(ref_out) or not os.listdir(ref_out):
 					continue
 				benchmark = documents.Reference()
 				found_benchmark = collections['references'].find_one({'version': refversion, 'hash': hash})
