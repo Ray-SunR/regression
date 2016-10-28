@@ -5,11 +5,15 @@ from multiprocessing.dummy import Pool as ThreadPool
 import os.path
 import argparse
 import subprocess
+import re
+import json
+import sys
 
 class regression_core_task(object):
 	def __init__(self,
 				 files,
 				 src_dir,
+				 error_handler,
 				 ref_output_dir=None,
 				 tar_output_dir=None,
 				 out_dir=None,
@@ -18,6 +22,7 @@ class regression_core_task(object):
 				 tar_bin_dir=None,
 				 ref_version_name=None):
 
+		self.__error_handler = error_handler
 		self.__bin_path = None
 
 		assert (ref_bin_dir or tar_bin_dir)
@@ -119,22 +124,41 @@ class regression_core_task(object):
 		fullbinpath = os.path.abspath(fullbinpath)
 		filepath = os.path.abspath(filepath)
 		output_dir = os.path.abspath(output_dir)
-		if os.path.splitext(os.path.split(fullbinpath)[1])[0] == 'docpub':
+		program_name = os.path.splitext(os.path.split(fullbinpath)[1])[0]
+		sys.stdout.write('Converting: ' + filepath)
+		sys.stdout.flush()
+		if program_name == 'docpub':
 			if os.path.splitext(filepath)[1].lower() in ['.docx', '.pptx']:
 				commands = [fullbinpath, '-f', 'pdf', '--builtin_docx=true', '--toimages=true', filepath, '-o', output_dir]
 			else:
 				commands = [fullbinpath, '-f', 'pdf', '--toimages=true', filepath, '-o', output_dir]
+		elif program_name == 'office2pdf':
+			if os.path.splitext(filepath)[1].lower() in ['.docx', '.pptx', '.doc']:
+				commands = [fullbinpath, '--qa', filepath, '-o', output_dir]
 		else:
 			commands = [fullbinpath, filepath, '-o', output_dir]
 		process = subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 		if process.returncode:
-			print('An error occurred when converting: ' + filepath)
+			self.__error_handler.write(filepath, object=self.__ref_or_tar, iscrash=True)
+			print(self.__ref_or_tar + ': An error occurred when converting: ' + filepath)
 
 		stdout = process.communicate()[0]
 		try:
-			print(stdout.decode('utf-8'))
-		except:
-			pass
+			if program_name == 'office2pdf':
+				pattern = b'{bson_begin}\s(.*)\s{bson_end}'
+				ret = re.search(pattern, stdout, re.DOTALL)
+				if not ret:
+					self.__error_handler.write(filepath, object=self.__ref_or_tar, iscrash=True)
+				else:
+					json_content = ret.group(1)
+					bsonobj = json.loads(json_content.decode('utf-8'))
+					if bsonobj['status'] == 'exception':
+						self.__error_handler.write(filepath, bsonobj['exception_info']['failure_reason'], object=self.__ref_or_tar, isexception=True)
+
+			sys.stdout.buffer.write(stdout)
+			sys.stdout.flush()
+		except Exception as e:
+			print(e)
 		return
 
 	def Run(self):

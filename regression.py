@@ -10,6 +10,7 @@ import subprocess
 import json
 import re
 from reg_helper import regression_core_task
+from errorhandler import errorhandler
 
 
 class Regression(object):
@@ -24,16 +25,20 @@ class Regression(object):
 				 tar_bin_dir=None,
 				 do_pdf=True,
 				 do_docx=False,
+				 do_doc=False,
 				 do_pptx=False,
 				 do_diff=False):
 
-		self.__error_handler = open('error.txt', 'wb')
+		self.__error_handler = errorhandler('error.txt')
 		self.__exts = []
 		if do_pdf:
 			self.__exts.append('.pdf')
 
 		if do_docx:
 			self.__exts.append('.docx')
+
+		if do_doc:
+			self.__exts.append('.doc')
 
 		if do_pptx:
 			self.__exts.append('.pptx')
@@ -141,7 +146,8 @@ class Regression(object):
 	def __run_image_diff_impl(self, tuple):
 		args = [sys.executable, 'image_diff.py', '--file1', tuple[0], '--file2', tuple[1], '--output', tuple[2]]
 		try:
-			print('Running diff for %s and %s' % (tuple[0], tuple[1]))
+			sys.stdout.buffer.write(('Running diff for %s and %s\n' % (tuple[0], tuple[1])).encode('utf-8'))
+			sys.stdout.flush()
 		except:
 			pass
 		process = subprocess.Popen(args, stdout=subprocess.PIPE)
@@ -159,8 +165,8 @@ class Regression(object):
 				self.__diff_metrics_ref_map[tuple[0]] = diff_metrics
 				self.__diff_metrics_tar_map[tuple[1]] = diff_metrics
 			except Exception as e:
-				str = 'image_diff: %s and %s image diff operation failed. Reason: %s' % (tuple[0], tuple[1], str(e))
-				self.__error_handler.write(str.encode('utf-8'))
+				str = 'image_diff: %s and %s image diff operation failed. Reason: %s' % (tuple[0], tuple[1], e)
+				self.__error_handler.writemessage(str.encode('utf-8'))
 				print(e)
 
 	def __populate_file_paths(self):
@@ -269,7 +275,7 @@ class Regression(object):
 						else:
 							tl=False
 				except Exception as e:
-					self.__error_handler.write(str(e).encode('utf-8'))
+					self.__error_handler.writemessage(str(e).encode('utf-8'))
 					print(e)
 		else:
 			for file in self.__ref_out_paths:
@@ -305,15 +311,16 @@ class Regression(object):
 									else:
 										self.__delete_all(path)
 							try:
-								print(os.path.join(root, file) + ' added to queue')
+								sys.stdout.buffer.write((os.path.join(root, file) + ' added to queue\n').encode('utf-8'))
+								sys.stdout.flush()
 							except Exception as e:
-								str = 'get_all_files: failed. Reason %s' % str(e)
-								self.__error_handler.write(str.encode('utf-8'))
+								str = 'get_all_files: failed. Reason %s' % e
+								self.__error_handler.writemessage(str.encode('utf-8'))
 								pass
 							self.__src_file_paths.append(os.path.join(root, file))
 					except Exception as e:
-						str = 'get_all_files: failed. Reason %s' % str(e)
-						self.__error_handler.write(str.encode('utf-8'))
+						str = 'get_all_files: failed. Reason %s' % e
+						self.__error_handler.writemessage(str.encode('utf-8'))
 						print(e)
 		return self.__src_file_paths
 
@@ -321,8 +328,10 @@ class Regression(object):
 		if not files:
 			return
 
-		core_task_ref = regression_core_task(files,
+		if self.__ref_bin_dir:
+			core_task_ref = regression_core_task(files,
 											 self.__src_testdir,
+											 error_handler=self.__error_handler,
 											 ref_output_dir=self.__ref_out,
 											 tar_output_dir=None,
 											 out_dir=self.__out_dir,
@@ -330,18 +339,21 @@ class Regression(object):
 											 ref_bin_dir=self.__ref_bin_dir,
 											 tar_bin_dir=None,
 											 ref_version_name=self.__ref_version)
+			core_task_ref.Run()
 
-		core_task_tar = regression_core_task(files,
+		if self.__tar_bin_dir:
+			core_task_tar = regression_core_task(files,
 											 self.__src_testdir,
+											 error_handler=self.__error_handler,
 											 ref_output_dir=None,
 											 tar_output_dir=self.__tar_out,
 											 out_dir=self.__out_dir,
 											 concur=self.__concurency,
 											 ref_bin_dir=None,
 											 tar_bin_dir=self.__tar_bin_dir)
+			core_task_tar.Run()
 
-		core_task_ref.Run()
-		core_task_tar.Run()
+		self.__populate_file_paths()
 
 		if self.__do_diff:
 			self.run_image_diff()
@@ -364,16 +376,20 @@ class Regression(object):
 		return os.path.join('diff', self.__ref_version + '-' + self.__tar_version) if self.__out_dir else self.__diff_out
 
 	def get_versions(self):
-		assert(self.__ref_bin_dir)
-		assert(self.__tar_bin_dir)
+		if self.__ref_bin_dir:
+			refversion = subprocess.Popen([self.__ref_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+			refstdout = refversion.communicate()[0]
+		else:
+			refstdout = b''
 
-		refversion = subprocess.Popen([self.__ref_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-		tarversion = subprocess.Popen([self.__tar_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+		if self.__tar_bin_dir:
+			tarversion = subprocess.Popen([self.__tar_bin_dir, '-v'], stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+			tarstdout = tarversion.communicate()[0]
+		else:
+			tarstdout = b''
 
 		pattern = b'.*(\d+\.\d+).'
 
-		refstdout = refversion.communicate()[0]
-		tarstdout = tarversion.communicate()[0]
 		ret = re.search(pattern, refstdout)
 		if ret:
 			refstdout = ret.group(1)
@@ -506,10 +522,11 @@ class Regression(object):
 		collections = args[2]
 		document.bson(collections, self.__ref_version, self.__tar_version)
 		try:
-			print(document.get('document_name') + ' dumped to database successfully')
+			sys.stdout.buffer.write((document.get('document_name') + ' dumped to database successfully\n').encode('utf-8'))
+			sys.stdout.flush()
 		except Exception as e:
-			str = document.get('document_name') + (' failed to dump to database. Reason: %s') % str(e)
-			self.__error_handler.write(str.encode('utf-8'))
+			str = document.get('document_name') + (' failed to dump to database. Reason: %s') % e
+			self.__error_handler.writemessage(str.encode('utf-8'))
 			print(e)
 
 	def __sanity_check(self):
@@ -518,14 +535,22 @@ class Regression(object):
 			if self.__out_dir:
 				hash = self.__hash(path)
 				if not hash:
-					self.__error_handler.write((path + ' is missing\n').encode('utf-8'))
+					self.__error_handler.write(path, ismissing=True)
 					continue
 
 				ref_out = os.path.join(self.__out_dir, hash, 'ref', self.__ref_version)
 				if not os.path.exists(ref_out) or not os.listdir(ref_out):
-					self.__error_handler.write((path + ' is missing\n').encode('utf-8'))
+					self.__error_handler.write(path, ismissing=True)
 			else:
 				pass
+		crashes = self.__error_handler.crashes()
+		exceptions = self.__error_handler.exceptions()
+		missings = self.__error_handler.missing()
+
+		report = { 'crashses': crashes, 'exceptions': exceptions, 'missing': missings, 'crash_ratio': len(crashes)/len(self.__src_file_paths), 'exception_ratio': self.__error_handler.numofexceptions() / len(self.__src_file_paths), 'missing_ratio': len(missings) / len(self.__src_file_paths) }
+		sys.stdout.buffer.write(json.dumps(report, ensure_ascii=False, indent=4, separators=(',', ': ')).encode('utf-8'))
+		sys.stdout.buffer.write('\n'.encode('utf-8'))
+
 
 	def update_database(self):
 		# Only possible through centralized mode
@@ -541,7 +566,7 @@ class Regression(object):
 			try:
 				hash = self.__hash(path)
 				if not hash:
-					self.__error_handler.write((path + ' unhashable!\n').encode('utf-8'))
+					self.__error_handler.writemessage((path + ' unhashable!\n').encode('utf-8'))
 					continue
 				ref_out = os.path.join(self.__out_dir, hash, 'ref', self.__ref_version)
 				if not os.path.exists(ref_out) or not os.listdir(ref_out):
@@ -567,8 +592,8 @@ class Regression(object):
 				benchmark.populate(self, document)
 				alldocs.append(document)
 			except Exception as e:
-				str = 'update_database: An error occurred while dumping %s to database, exception info: %s' % (path, str(e))
-				self.__error_handler.write(str.encode('utf-8'))
+				str = 'update_database: An error occurred while dumping %s to database, exception info: %s' % (path, e)
+				self.__error_handler.writemessage(str.encode('utf-8'))
 				print(e)
 
 		serialize_ret = []
@@ -597,16 +622,17 @@ def main():
 	# Simple regression mode
 	#regression = Regression(src_testdir='test_files', ref_outdir='test_out/ref', tar_outdir='test_out/tar', diff_outdir='test_out/diff', ref_bin_dir='ref_bin/pdf2image', tar_bin_dir='tar_bin/pdf2image', do_pdf=True, do_diff=True)
 
+
 	# Centralized mode
 
 	import time
 	start_time = time.time()
-	regression = Regression(src_testdir='test_files/', out_dir='test_out', concur=8,tar_bin_dir='tar_bin/pdf2image' ,ref_bin_dir='ref_bin/pdf2image', do_diff=True)
-	regression.run()
+	#regression = Regression(src_testdir='test_files/', out_dir='test_out', concur=8,tar_bin_dir='tar_bin/pdf2image' ,ref_bin_dir='ref_bin/pdf2image', do_diff=True)
+	#regression.run()
 	#regression.update_database()
 
-	#regression = Regression(src_testdir='D:/PDFTest/Miscellaneous', out_dir='G:/Regression', concur=8, tar_bin_dir='tar_bin/docpub.exe', ref_bin_dir='ref_bin/docpub.exe', do_diff=True)
-
+	regression = Regression(src_testdir='D:/Work/Github/regression/test', ref_outdir='G:/Regression/OfficeTest', concur=8, ref_bin_dir='G:/PDFNetBins/6.7_rebranch/vs2013_mt64/output/lib/Release/office2pdf.exe', do_doc=True, do_pdf=False)
+	regression.run()
 	#regression.run_all_files()
 	#regression.run_image_diff()
 	#regression.update_database()
